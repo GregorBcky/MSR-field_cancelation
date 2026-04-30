@@ -298,5 +298,9 @@ class Mu_material():
         self.total_shield.fix_normals()
         # total_shield.fill_holes()  # Falls Löcher
 
+        self.shield_conductor = bfieldtools.mesh_conductor.MeshConductor(
+            mesh_obj=self.total_shield,
+            basis_name="inner"
+        )
         # Jetzt: Keine Boundary-Edges mehr (closed manifold)
         inner_idx_shield = bfieldtools.utils.find_mesh_boundaries(self.total_shield)
