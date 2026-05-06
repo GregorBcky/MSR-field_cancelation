@@ -24,11 +24,11 @@ class Coil_Layup():
         self.usable_length_z = usable_length_z
 
         # Compute the number of coils that can be placed in each direction
-        self.number_of_coils_x = int(np.floor((self.usable_length_x - self.x_dist) / (self.coil_diameter + self.x_dist)))
-        self.number_of_coils_y = int(np.floor((self.usable_length_y - self.y_dist) / (self.coil_diameter + self.y_dist)))
-        self.number_of_coils_z = int(np.floor((self.usable_length_z - self.z_dist) / (self.coil_diameter + self.z_dist)))
+        self.number_of_coils_x = int(np.floor(max(self.usable_length_x - self.x_dist, 0) / (self.coil_diameter + self.x_dist)))
+        self.number_of_coils_y = int(np.floor(max(self.usable_length_y - self.y_dist, 0) / (self.coil_diameter + self.y_dist)))
+        self.number_of_coils_z = int(np.floor(max(self.usable_length_z - self.z_dist, 0) / (self.coil_diameter + self.z_dist)))
 
-        # Compute the coordinates of the coil centers (deine Logik unverändert)
+        # Compute the coordinates of the coil centers
         x_points = []
         if self.number_of_coils_x % 2 == 1:
             x_points.append(0)
@@ -128,7 +128,21 @@ class Coil_Layup():
                 self.grid_xz.append((x_points[i], -self.coil_plane_dist_to_origin_y, z_points[j]))
                 k += 1
 
-        self.grid = np.concatenate([np.array(self.grid_xy), np.array(self.grid_yz), np.array(self.grid_xz)])
+        self.grid = []
+        if not self.grid_xy:
+            print('Warning: No coils in xy-plane. Check that useable_length_ is not 0 for x or y!')
+        else:
+            self.grid.append(self.grid_xy)
+        if not self.grid_yz:
+            print('Warning: No coils in yz-plane. Check that useable_length_ is not 0 for y or z!')
+        else:
+            self.grid.append(self.grid_yz)
+        if not self.grid_xz:
+            print('Warning: No coils in xz-plane. Check that useable_length_ is not 0 for x or z!')
+        else:
+            self.grid.append(self.grid_xz)
+        self.grid = np.array(self.grid)
+
 
         self.plane_xy_pos = np.stack([all_x_xy_pos, all_y_xy_pos, all_z_xy_pos], axis=-1)  # (n_coils_xy, 100, 3)
         self.plane_xy_neg = np.stack([all_x_xy_pos, all_y_xy_pos, all_z_xy_neg], axis=-1)  # (n_coils_xy, 100, 3)
@@ -205,8 +219,9 @@ class Coil_Layup():
 
             return B
     
-    def create_mesh(self, door_width, door_height, door_floor_offset, door_offset_x):
+    def create_mesh(self, door_removal, door_width, door_height, door_floor_offset, door_offset_x):
         
+        self.door_removal = door_removal
         self.door_width = door_width
         self.door_height = door_height
         self.door_floor_offset = door_floor_offset
@@ -289,65 +304,68 @@ class Coil_Layup():
 
 
         # Remove the door!!!
+        if door_removal == True:
 
-        # Include door in xz-plane (front wall) -> remove by using .difference() which is a boolean operation substracting the door mesh from the rest
-        door_xmin = self.usable_length_x/2 - self.door_offset_x - self.door_width
-        door_xmax = self.usable_length_x/2 - self.door_offset_x
-        door_zmin = -self.usable_length_z/2 + self.door_floor_offset
-        door_zmax = -self.usable_length_z/2 + self.door_floor_offset + self.door_height
+            # Include door in xz-plane (front wall) -> remove by using .difference() which is a boolean operation substracting the door mesh from the rest
+            door_xmin = self.usable_length_x/2 - self.door_offset_x - self.door_width
+            door_xmax = self.usable_length_x/2 - self.door_offset_x
+            door_zmin = -self.usable_length_z/2 + self.door_floor_offset
+            door_zmax = -self.usable_length_z/2 + self.door_floor_offset + self.door_height
 
-        door_faces = []
-        front_wall_faces = []
+            door_faces = []
+            front_wall_faces = []
 
-        # print(f"Before loop: door_faces len={len(door_faces)}, front_wall_faces len={len(front_wall_faces)}")
+            # print(f"Before loop: door_faces len={len(door_faces)}, front_wall_faces len={len(front_wall_faces)}")
 
-        for fi, face in enumerate(self.coil_minus_xz.faces):
-            v0, v1, v2 = face                                           # Assign each corner of the triangle to a vertex index
-            xpts = [x[v0], x[v1], x[v2]]                                # Get the x-coordinates of the triangle vertices
-            zpts = [z[v0], z[v1], z[v2]]                                # Get the z-coordinates of the triangle vertices
-            
-            # All 3 vertices inside door rectangle?
-            if (all(door_xmin <= px <= door_xmax for px in xpts) and    # Check door
-                all(door_zmin <= pz <= door_zmax for pz in zpts)):
-                door_faces.append(face)
-            elif (all(door_xmin >= px or px >= door_xmax for px in xpts) or    # Check front wall
-                all(door_zmin >= pz or pz >= door_zmax for pz in zpts)):
-                front_wall_faces.append(face)
+            for fi, face in enumerate(self.coil_minus_xz.faces):
+                v0, v1, v2 = face                                           # Assign each corner of the triangle to a vertex index
+                xpts = [x[v0], x[v1], x[v2]]                                # Get the x-coordinates of the triangle vertices
+                zpts = [z[v0], z[v1], z[v2]]                                # Get the z-coordinates of the triangle vertices
+                
+                # All 3 vertices inside door rectangle?
+                if (all(door_xmin <= px <= door_xmax for px in xpts) and    # Check door
+                    all(door_zmin <= pz <= door_zmax for pz in zpts)):
+                    door_faces.append(face)
+                elif (all(door_xmin >= px or px >= door_xmax for px in xpts) or    # Check front wall
+                    all(door_zmin >= pz or pz >= door_zmax for pz in zpts)):
+                    front_wall_faces.append(face)
 
-        # Remaining faces form wall with hole
-        door_faces = np.array(door_faces)
-        front_wall_faces = np.array(front_wall_faces)
+            # Remaining faces form wall with hole
+            door_faces = np.array(door_faces)
+            front_wall_faces = np.array(front_wall_faces)
 
-        # print(f"After loop: door_faces len={len(door_faces)}, front_wall_faces len={len(front_wall_faces)}")
-        # print(f"Total faces: {len(self.coil_plus_xz.faces)}, Classified: {len(door_faces) + len(front_wall_faces)}")
+            # print(f"After loop: door_faces len={len(door_faces)}, front_wall_faces len={len(front_wall_faces)}")
+            # print(f"Total faces: {len(self.coil_plus_xz.faces)}, Classified: {len(door_faces) + len(front_wall_faces)}")
 
-        # Create separate meshes for wall and door with a small gap between them
-        # This allows applying different boundary conditions later
+            # Create separate meshes for wall and door with a small gap between them
+            # This allows applying different boundary conditions later
 
-        # Wall mesh
-        wall_vertex_indices = np.unique(front_wall_faces.ravel())
-        wall_vertex_map = {old_idx: new_idx for new_idx, old_idx in enumerate(wall_vertex_indices)}
-        wall_vertices = self.coil_minus_xz.vertices[wall_vertex_indices]
-        wall_faces_remapped = np.array([[wall_vertex_map[v] for v in face] for face in front_wall_faces])
-        wall_mesh = trimesh.Trimesh(wall_vertices, wall_faces_remapped, process=False)
+            # Wall mesh
+            wall_vertex_indices = np.unique(front_wall_faces.ravel())
+            wall_vertex_map = {old_idx: new_idx for new_idx, old_idx in enumerate(wall_vertex_indices)}
+            wall_vertices = self.coil_minus_xz.vertices[wall_vertex_indices]
+            wall_faces_remapped = np.array([[wall_vertex_map[v] for v in face] for face in front_wall_faces])
+            wall_mesh = trimesh.Trimesh(wall_vertices, wall_faces_remapped, process=False)
 
-        # Door mesh
-        door_vertex_indices = np.unique(door_faces.ravel())
-        door_vertex_map = {old_idx: new_idx for new_idx, old_idx in enumerate(door_vertex_indices)}
-        door_vertices = self.coil_minus_xz.vertices[door_vertex_indices].copy()
-        door_faces_remapped = np.array([[door_vertex_map[v] for v in face] for face in door_faces])
-        door_mesh = trimesh.Trimesh(door_vertices, door_faces_remapped, process=False)
+            # Door mesh
+            door_vertex_indices = np.unique(door_faces.ravel())
+            door_vertex_map = {old_idx: new_idx for new_idx, old_idx in enumerate(door_vertex_indices)}
+            door_vertices = self.coil_minus_xz.vertices[door_vertex_indices].copy()
+            door_faces_remapped = np.array([[door_vertex_map[v] for v in face] for face in door_faces])
+            door_mesh = trimesh.Trimesh(door_vertices, door_faces_remapped, process=False)
 
-        # Combined mesh with gap
-        self.coil_plus_xz_with_gap = trimesh.util.concatenate([wall_mesh, door_mesh])
+            # Combined mesh with gap
+            self.coil_minus_xz = trimesh.util.concatenate([wall_mesh, door_mesh])
 
+        else:
+            pass
+        
         # wall_mesh and door_mesh remain available for individual boundary condition application
-
         self.total_planes=combine_meshes((
-            self.coil_plus_xy,self.coil_minus_xy,
-            self.coil_plus_xz, self.coil_plus_xz_with_gap,
-            self.coil_plus_yz,self.coil_minus_yz
-            ))
+                self.coil_plus_xy,self.coil_minus_xy,
+                self.coil_plus_xz, self.coil_minus_xz,
+                self.coil_plus_yz,self.coil_minus_yz
+                ))
 
 class Mu_material():
     def __init__(self, shield_dim, shield_thickness):
