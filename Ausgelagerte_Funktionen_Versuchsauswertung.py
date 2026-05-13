@@ -258,3 +258,17 @@ def plot_stream_function(vertices, stream_function):
 
     plt.tight_layout()
     plt.show()
+
+def calculation_target_points(n, usable_length_x, usable_length_y, usable_length_z):
+    target_point_coord_calc = []
+    point_coord_calc_x = np.linspace(-(usable_length_x/2 - 0.1), +usable_length_x/2 - 0.1, n)
+    point_coord_calc_y = np.linspace(-(usable_length_y/2 - 0.1), +usable_length_y/2 - 0.1, n)
+    point_coord_calc_z = np.linspace(-(usable_length_z/2 - 0.1), +usable_length_z/2 - 0.1, n)
+
+    for idx_x in range(n):
+        for idx_y in range(n):
+            for idx_z in range(n):
+                target_point_coord_calc.append([point_coord_calc_x[idx_x], point_coord_calc_y[idx_y], point_coord_calc_z[idx_z]])
+
+    target_point_coord_calc = np.array(target_point_coord_calc)
+    return target_point_coord_calc

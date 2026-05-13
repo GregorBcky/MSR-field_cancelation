@@ -194,26 +194,26 @@ class Coil_Layup():
             """
 
             # Segment vectors along each coil
-            dR = np.roll(self.all_coils, -1, axis=1) - self.all_coils                      # (n_coils, n_seg, 3); difference between consecutive points along each coil, with wrap-around for closed loop
-            ds = np.linalg.norm(dR, axis=2, keepdims=True)               # (n_coils, n_seg, 1); length of each circle segment computed from geometry
+            dR = np.roll(self.all_coils, -1, axis=1) - self.all_coils                       # (n_coils, n_seg, 3); difference between consecutive points along each coil, with wrap-around for closed loop
+            ds = np.linalg.norm(dR, axis=2, keepdims=True)                                  # (n_coils, n_seg, 1); length of each circle segment computed from geometry
 
             # Current element dℓ = ds * tangent_hat, here tangent_hat = dR / |dR|
             # so dℓ = dR. Multiply by current and winding count.
-            dl = self.I_windings_total[:, None, None] * dR                    # (n_coils, n_seg, 3); current * windings * tangential sector vector (not normalized, since ds is included)
+            dl = self.I_windings_total[:, None, None] * dR                                  # (n_coils, n_seg, 3); current * windings * tangential sector vector (not normalized, since ds is included)
 
             B = np.zeros((target_points.shape[0], 3), dtype=float)
 
             for i, target in enumerate(target_points):
-                r = target[None, None, :] - self.all_coils                        # (n_coils, n_seg, 3); $\vec{r}-\vec{r}'$
-                r_norm = np.linalg.norm(r, axis=2)                       # (n_coils, n_seg);    $|\vec{r}-\vec{r}'|$
+                r = target[None, None, :] - self.all_coils                                  # (n_coils, n_seg, 3); $\vec{r}-\vec{r}'$
+                r_norm = np.linalg.norm(r, axis=2)                                          # (n_coils, n_seg);    $|\vec{r}-\vec{r}'|$
 
                 # Avoid division by zero if a target lies exactly on a segment point
                 if np.any(r_norm <= 0):
                     print(f'WARNING: r_norm = {r_norm} which leads to a division by zero in the Biot-Savart calculation (Point {i})')
 
-                cross = np.cross(dl, r)                                  # (n_coils, n_seg, 3); $\mathrm{d}\vec{\ell} \cross (\vec{r}-\vec{r}')$
+                cross = np.cross(dl, r)                                                     # (n_coils, n_seg, 3); $\mathrm{d}\vec{\ell} \cross (\vec{r}-\vec{r}')$
                 contrib = np.zeros_like(cross)
-                contrib = cross / (r_norm**3)[:, :, None]                # Note that r_norm has shape (n_coils, n_seg) and cross has shape (n_coils, n_seg, 3), therefore the axis for broadcasting are needed)
+                contrib = cross / (r_norm**3)[:, :, None]                                   # Note that r_norm has shape (n_coils, n_seg) and cross has shape (n_coils, n_seg, 3), therefore the axis for broadcasting are needed)
 
                 B[i] = mu_0 / (4 * np.pi) * np.sum(contrib, axis=(0, 1))
 
