@@ -230,23 +230,23 @@ class Coil_Layup():
         # Create eqidistant spacing in each direction as basis for the grid
         nx,ny,nz = 10, 10, 10
         # size=coil_plane / 2                                                    # Size of the grid in each direction (Note: coil_loc = 0.9)
-        x=np.linspace(-self.usable_length_x/2,self.usable_length_x/2,nx)
-        y=np.linspace(-self.usable_length_y/2,self.usable_length_y/2,ny)
-        z=np.linspace(-self.usable_length_z/2,self.usable_length_z/2,nz)
+        x = np.linspace(-self.usable_length_x/2, self.usable_length_x/2, nx)
+        y = np.linspace(-self.usable_length_y/2, self.usable_length_y/2, ny)
+        z = np.linspace(-self.usable_length_z/2, self.usable_length_z/2, nz)
 
         #xy-plane = bottom, top -> stores points (vertices) of 2D square grid
-        xx,yy=np.meshgrid(x,y)                                                  # xx is an array of ny copies of x (yy analogue)
-        xy_plane=np.column_stack([xx.ravel(),yy.ravel(),np.zeros(xx.size)])     # .ravel flattens the array to 1D and .column_stack puts arrays onto each other, s.t. the points (vertices) of the 2D grid are stored with a 0 attended to each point.
+        xx, yy = np.meshgrid(x, y)                                                  # xx is an array of ny copies of x (yy analogue)
+        xy_plane = np.column_stack([xx.ravel(), yy.ravel(), np.zeros(xx.size)])     # .ravel flattens the array to 1D and .column_stack puts arrays onto each other, s.t. the points (vertices) of the 2D grid are stored with a 0 attended to each point.
 
-        #xz-plane=(front not anymore),back
-        xx,zz=np.meshgrid(x,z)
-        xz_plane=np.column_stack([xx.ravel(),np.zeros(xx.size),zz.ravel()])
+        #xz-plane = (front not anymore),back
+        xx, zz = np.meshgrid(x, z)
+        xz_plane = np.column_stack([xx.ravel(), np.zeros(xx.size), zz.ravel()])
 
-        #yz-plane=left, right
-        yy,zz=np.meshgrid(y,z)
-        yz_plane=np.column_stack([np.zeros(yy.size),yy.ravel(),zz.ravel()])
+        #yz-plane = left, right
+        yy, zz = np.meshgrid(y, z)
+        yz_plane = np.column_stack([np.zeros(yy.size), yy.ravel(), zz.ravel()])
 
-        triangles_xy=[]
+        triangles_xy = []
 
 
         for i in range(ny - 1):
@@ -256,55 +256,61 @@ class Coil_Layup():
                 p2 = p0 + nx    # next point above p0
                 p3 = p2 + 1     # next point to the right of p2
 
-                # triangle 1
+                # append triangle 1
                 triangles_xy.append([p0, p1, p2])
-                # triangle 2
+                # append triangle 2
                 triangles_xy.append([p1, p3, p2])
 
         triangles_xy = np.array(triangles_xy)
-        triangles_xz=triangles_xy.copy()
-        triangles_yz=triangles_xy.copy()
-        tri_xy=trimesh.Trimesh(xy_plane,triangles_xy)
-        tri_xz=trimesh.Trimesh(xz_plane,triangles_xz)
-        tri_yz=trimesh.Trimesh(yz_plane,triangles_yz)
-        tri_xy=tri_xy.subdivide().subdivide()#.subdivide()
-        tri_xz=tri_xz.subdivide().subdivide()#.subdivide()
-        tri_yz=tri_yz.subdivide().subdivide()#.subdivide()
+
+        triangles_xz = triangles_xy.copy()
+        triangles_yz = triangles_xy.copy()
+
+        tri_xy = trimesh.Trimesh(xy_plane,triangles_xy)
+        tri_xz = trimesh.Trimesh(xz_plane,triangles_xz)
+        tri_yz = trimesh.Trimesh(yz_plane,triangles_yz)
+
+        tri_xy = tri_xy.subdivide().subdivide()#.subdivide()
+        tri_xz = tri_xz.subdivide().subdivide()#.subdivide()
+        tri_yz = tri_yz.subdivide().subdivide()#.subdivide()
 
         x = tri_xz.vertices[:, 0]
         z = tri_xz.vertices[:, 2]
         faces = tri_xz.faces
 
         # coil_loc = distance to origin! -> Distance to wall = 1/2 room_length - coil_loc -> already defined in dimensions
-        plus_off_xy=np.array([0,0,self.coil_plane_dist_to_origin_z])
-        minus_off_xy=np.array([0,0,-self.coil_plane_dist_to_origin_z])
-        plus_off_xz=np.array([0,self.coil_plane_dist_to_origin_y,0])
-        minus_off_xz=np.array([0,-self.coil_plane_dist_to_origin_y,0])
-        plus_off_yz=np.array([self.coil_plane_dist_to_origin_x,0,0])
-        minus_off_yz=np.array([-self.coil_plane_dist_to_origin_x,0,0])
+        plus_off_xy = np.array([0,0,self.coil_plane_dist_to_origin_z])
+        minus_off_xy = np.array([0,0,-self.coil_plane_dist_to_origin_z])
+        plus_off_xz = np.array([0,self.coil_plane_dist_to_origin_y,0])
+        minus_off_xz = np.array([0,-self.coil_plane_dist_to_origin_y,0])
+        plus_off_yz = np.array([self.coil_plane_dist_to_origin_x,0,0])
+        minus_off_yz = np.array([-self.coil_plane_dist_to_origin_x,0,0])
 
-        self.coil_plus_xy=trimesh.Trimesh(
-            tri_xy.vertices+plus_off_xy,tri_xy.faces,process=False
+        self.coil_plus_xy = trimesh.Trimesh(
+            tri_xy.vertices+plus_off_xy, tri_xy.faces, process=False
         )
-        self.coil_minus_xy=trimesh.Trimesh(
-            tri_xy.vertices+minus_off_xy,tri_xy.faces,process=False
+        self.coil_minus_xy = trimesh.Trimesh(
+            tri_xy.vertices+minus_off_xy, tri_xy.faces, process=False
         )
-        self.coil_plus_xz=trimesh.Trimesh(
-            tri_xz.vertices+plus_off_xz,tri_xz.faces,process=False
+        self.coil_plus_xz = trimesh.Trimesh(
+            tri_xz.vertices+plus_off_xz, tri_xz.faces, process=False
         )
-        self.coil_minus_xz=trimesh.Trimesh(
-            tri_xz.vertices+minus_off_xz,tri_xz.faces,process=False
+        self.coil_minus_xz = trimesh.Trimesh(
+            tri_xz.vertices+minus_off_xz, tri_xz.faces, process=False
         )
-        self.coil_plus_yz=trimesh.Trimesh(
-            tri_yz.vertices+plus_off_yz,tri_yz.faces,process=False
+        self.coil_plus_yz = trimesh.Trimesh(
+            tri_yz.vertices+plus_off_yz, tri_yz.faces, process=False
         )
-        self.coil_minus_yz=trimesh.Trimesh(
-            tri_yz.vertices+minus_off_yz,tri_yz.faces,process=False
+        self.coil_minus_yz = trimesh.Trimesh(
+            tri_yz.vertices+minus_off_yz, tri_yz.faces, process=False
         )
 
 
         # Remove the door!!!
-        if door_removal == True:
+        if self.usable_length_x == 0 or self.usable_length_z == 0:
+            self.door_removal = False                                   # If the wall containing the door does not exist, the dorr can not exist
+
+        if self.door_removal == True:
 
             # Include door in xz-plane (front wall) -> remove by using .difference() which is a boolean operation substracting the door mesh from the rest
             door_xmin = self.usable_length_x/2 - self.door_offset_x - self.door_width
@@ -361,112 +367,151 @@ class Coil_Layup():
             pass
         
         # wall_mesh and door_mesh remain available for individual boundary condition application
-        self.total_planes=combine_meshes((
+        
+        # Combine the meshes. Switch to special cases, if there are usable_lengths of 0 somewhere!
+        if self.usable_length_x == 0:
+            self.total_planes = combine_meshes((
+                self.coil_plus_yz,self.coil_minus_yz
+                ))
+        elif self.usable_length_y == 0:
+            self.total_planes = combine_meshes((
+                self.coil_plus_xz, self.coil_minus_xz,
+                ))
+        elif self.usable_length_z == 0:
+            self.total_planes = combine_meshes((
+                self.coil_plus_xy,self.coil_minus_xy,
+                ))
+        elif self.usable_length_x == 0 and (self.usable_length_y == 0 or self.usable_length_z == 0) or self.usable_length_y == 0 and self.usable_length_z == 0:
+            self.total_planes = []
+            print('The mesh collapsed into a line or a point which can not be meshed! Chnage the parameters of *usable_length*. Some of them are nonsense!')
+        else:
+            self.total_planes=combine_meshes((
                 self.coil_plus_xy,self.coil_minus_xy,
                 self.coil_plus_xz, self.coil_minus_xz,
                 self.coil_plus_yz,self.coil_minus_yz
                 ))
 
 class Mu_material():
-    def __init__(self, shield_dim, shield_thickness):
-        self.shield_dim = shield_dim
-        self.shield_thickness = shield_thickness
+    def __init__(self, dim, thickness):
+        # Initialise variables from constructor input
+        self.dim = dim
+        self.thickness = thickness
         self.n_discretization = 10
 
-        nx_shield, ny_shield, nz_shield = self.n_discretization, self.n_discretization, self.n_discretization
-        size_shield = self.shield_dim/2                                                    # Size of the grid in each direction (Note: shield_loc = 1.15)
-        x_shield=np.linspace(-size_shield,size_shield,nx_shield)
-        y_shield=np.linspace(-size_shield,size_shield,ny_shield)
-        z_shield=np.linspace(-size_shield,size_shield,nz_shield)
+        # Discretise the space available for the mesh
+        nx, ny, nz = self.n_discretization, self.n_discretization, self.n_discretization
+        size = self.dim/2                                                    # Size of the grid in each direction (Note: offset = 1.15)
+        x = np.linspace(-size, size, nx)
+        y = np.linspace(-size, size, ny)
+        z = np.linspace(-size, size, nz)
 
-        #xy-plane = bottom, top
-        xx_shield,yy_shield=np.meshgrid(x_shield,y_shield)
-        xy_shield=np.column_stack([xx_shield.ravel(),yy_shield.ravel(),np.zeros(xx_shield.size)])
+        # Create meshes in each plane seperatly (These are just square meshes -> Arrays holding the vertices. Nothing more)
+        # xy-plane = bottom, top
+        xx, yy = np.meshgrid(x, y)
+        xy = np.column_stack([xx.ravel(), yy.ravel(), np.zeros(xx.size)])
 
-        #xz-plane=front,back
-        xx_shield,zz_shield=np.meshgrid(x_shield,z_shield)
-        xz_shield=np.column_stack([xx_shield.ravel(),np.zeros(xx_shield.size),zz_shield.ravel()])
+        # xz-plane=front,back
+        xx, zz = np.meshgrid(x, z)
+        xz = np.column_stack([xx.ravel(), np.zeros(xx.size), zz.ravel()])
 
-        #yz-plane=left, right
-        yy_shield,zz_shield=np.meshgrid(y_shield,z_shield)
-        yz_shield=np.column_stack([np.zeros(yy_shield.size),yy_shield.ravel(),zz_shield.ravel()])
+        # yz-plane=left, right
+        yy, zz = np.meshgrid(y, z)
+        yz = np.column_stack([np.zeros(yy.size), yy.ravel(), zz.ravel()])
 
-        triangles_xy_shield=[]
+        # Create triangles for the square mesh, completely filling the meshing plane
+        triangles_xy=[]
 
-
-        for i in range(ny_shield - 1):
-            for j in range(nx_shield - 1):
-                p0 = i * nx_shield + j
+        for i in range(ny - 1):
+            for j in range(nx - 1):
+                p0 = i * nx + j
                 p1 = p0 + 1
-                p2 = p0 + nx_shield
+                p2 = p0 + nx
                 p3 = p2 + 1
 
-                # triangle 1
-                triangles_xy_shield.append([p0, p1, p2])
-                # triangle 2
-                triangles_xy_shield.append([p1, p3, p2])
+                # append triangle 1
+                triangles_xy.append([p0, p1, p2])
+                # append triangle 2
+                triangles_xy.append([p1, p3, p2])
 
-        triangles_xy_shield = np.array(triangles_xy_shield)
-        triangles_xz_shield=triangles_xy_shield.copy()
-        triangles_yz_shield=triangles_xy_shield.copy()
-        tri_xy_shield=trimesh.Trimesh(xy_shield,triangles_xy_shield)
-        tri_xz_shield=trimesh.Trimesh(xz_shield,triangles_xz_shield)
-        tri_yz_shield=trimesh.Trimesh(yz_shield,triangles_yz_shield)
-        tri_xy_shield=tri_xy_shield.subdivide().subdivide()#.subdivide()
-        tri_xz_shield=tri_xz_shield.subdivide().subdivide()#.subdivide()
-        tri_yz_shield=tri_yz_shield.subdivide().subdivide()#.subdivide()
+        triangles_xy = np.array(triangles_xy)
 
-        x_shield = tri_xz_shield.vertices[:, 0]
-        z_shield = tri_xz_shield.vertices[:, 2]
-        faces_shield = tri_xz_shield.faces
-        # Create triangulation object
-        self.triang_shield = mtri.Triangulation(x_shield, z_shield, faces_shield)
+        # Copy what we just did for the other two directions as well
+        triangles_xz = triangles_xy.copy()
+        triangles_yz = triangles_xy.copy()
 
-        shield_loc = self.shield_dim / 2                                          # Location of the shield from the center (normal to surface) = 1/2 shield size (MSR is closed) -> compare to coil distance
-        plus_off_xy_shield=np.array([0,0,shield_loc])
-        minus_off_xy_shield=np.array([0,0,-shield_loc])
-        plus_off_xz_shield=np.array([0,shield_loc,0])
-        minus_off_xz_shield=np.array([0,-shield_loc,0])
-        plus_off_yz_shield=np.array([shield_loc,0,0])
-        minus_off_yz_shield=np.array([-shield_loc,0,0])
+        # Construct a trimesh object from the meshes
+        tri_xy = trimesh.Trimesh(vertices = xy, faces = triangles_xy, process = False)
+        tri_xz = trimesh.Trimesh(vertices = xz, faces = triangles_xz, process = False)
+        tri_yz = trimesh.Trimesh(vertices = yz, faces = triangles_yz, process = False)
 
-        shield_plus_xy=trimesh.Trimesh(
-            tri_xy_shield.vertices+plus_off_xy_shield,tri_xy_shield.faces,process=False
-        )
-        shield_minus_xy=trimesh.Trimesh(
-            tri_xy_shield.vertices+minus_off_xy_shield,tri_xy_shield.faces,process=False
-        )
-        shield_plus_xz=trimesh.Trimesh(
-            tri_xz_shield.vertices+plus_off_xz_shield,tri_xz_shield.faces,process=False
-        )
-        shield_minus_xz=trimesh.Trimesh(
-            tri_xz_shield.vertices+minus_off_xz_shield,tri_xz_shield.faces,process=False
-        )
-        shield_plus_yz=trimesh.Trimesh(
-            tri_yz_shield.vertices+plus_off_yz_shield,tri_yz_shield.faces,process=False
-        )
-        shield_minus_yz=trimesh.Trimesh(
-            tri_yz_shield.vertices+minus_off_yz_shield,tri_yz_shield.faces,process=False
-        )
+        # Place the meshes to the side, such that a cube (equal side lengths) is created
+        offset = self.dim / 2                   # Location of the shield from the center (normal to surface) = 1/2 shield size (MSR is closed) -> compare to coil distance
+        
+        # XY faces (top/bottom)
+        mesh_top = tri_xy.copy()
+        mesh_top.apply_translation([0, 0, +offset])
 
-        self.total_shield = combine_meshes((
-            shield_plus_xy, shield_minus_xy,
-            shield_plus_xz, shield_minus_xz, 
-            shield_plus_yz, shield_minus_yz
-        ))
+        mesh_bottom = tri_xy.copy()
+        mesh_bottom.apply_translation([0, 0, -offset])
+
+        # XZ faces (front/back)
+        mesh_front = tri_xz.copy()
+        mesh_front.apply_translation([0, +offset, 0])
+
+        mesh_back = tri_xz.copy()
+        mesh_back.apply_translation([0, -offset, 0])
+
+        # YZ faces (left/right)
+        mesh_right = tri_yz.copy()
+        mesh_right.apply_translation([+offset, 0, 0])
+
+        mesh_left = tri_yz.copy()
+        mesh_left.apply_translation([-offset, 0, 0])
+
+        self.total_shield = trimesh.util.concatenate([
+            mesh_top,
+            mesh_bottom,
+            mesh_front,
+            mesh_back,
+            mesh_right,
+            mesh_left
+            ])
 
         # CRUCIAL: Repair seams/duplicates
-        self.total_shield.merge_vertices()  # Merge nahe Vertices (Kanten)
+        self.total_shield.merge_vertices(digits_vertex = 6)  # Merge nahe Vertices (Kanten)
+        
+        # remove duplicate geometry
+        self.total_shield.update_faces(self.total_shield.unique_faces())
+        self.total_shield.update_faces(self.total_shield.unique_faces())
+        self.total_shield.remove_unreferenced_vertices()
         self.total_shield.fix_normals()
-        # total_shield.fill_holes()  # Falls Löcher
 
+        # Refine mesh
+        self.total_shield = self.total_shield.subdivide().subdivide()
+
+        # Merge the vertices at the edges of the cube, such that current can flow around the corner
+        self.total_shield.merge_vertices(digits_vertex=6)
+
+        # Debugging
+        print("Watertight:", self.total_shield.is_watertight)
+        print("Euler number:", self.total_shield.euler_number)
+
+        # Create a trimesh boundary object
+        self.boundaries = trimesh.grouping.group_rows(
+            self.total_shield.edges_sorted,
+            require_count=1
+            )
+        print("Boundary edges should have length = 0! They have length =", len(self.boundaries))
+
+        # Create a trimesh shield_conductor object
         self.shield_conductor = bfieldtools.mesh_conductor.MeshConductor(
-            mesh_obj=self.total_shield,
-            basis_name="inner"
-        )
+            mesh_obj = self.total_shield,
+            basis_name = "inner"
+            )
+        
         # Jetzt: Keine Boundary-Edges mehr (closed manifold)
-        self.inner_idx_shield = bfieldtools.utils.find_mesh_boundaries(self.total_shield)
+        self.inner_idx = bfieldtools.utils.find_mesh_boundaries(self.total_shield)
 
         #points_inside = total_shield.vertices - eps * total_shield.vertex_normals
-        scale = (size_shield - self.shield_thickness) / size_shield
+        scale = (size - self.thickness) / size
         self.points_inside = self.total_shield.vertices * scale
