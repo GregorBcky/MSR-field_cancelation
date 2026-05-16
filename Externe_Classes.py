@@ -221,6 +221,7 @@ class Coil_Layup():
     
     def create_mesh(self, door_removal, door_width, door_height, door_floor_offset, door_offset_x):
         
+        # Initialise variables from method input
         self.door_removal = door_removal
         self.door_width = door_width
         self.door_height = door_height
@@ -228,11 +229,11 @@ class Coil_Layup():
         self.door_offset_x = door_offset_x
 
         # Create eqidistant spacing in each direction as basis for the grid
-        nx,ny,nz = 10, 10, 10
+        nx,ny,nz = 12, 12, 12
         # size=coil_plane / 2                                                    # Size of the grid in each direction (Note: coil_loc = 0.9)
-        x = np.linspace(-self.usable_length_x/2, self.usable_length_x/2, nx)
-        y = np.linspace(-self.usable_length_y/2, self.usable_length_y/2, ny)
-        z = np.linspace(-self.usable_length_z/2, self.usable_length_z/2, nz)
+        x = np.linspace(-self.coil_plane_dist_to_origin_x, self.coil_plane_dist_to_origin_x, nx)
+        y = np.linspace(-self.coil_plane_dist_to_origin_y, self.coil_plane_dist_to_origin_y, ny)
+        z = np.linspace(-self.coil_plane_dist_to_origin_z, self.coil_plane_dist_to_origin_z, nz)
 
         #xy-plane = bottom, top -> stores points (vertices) of 2D square grid
         xx, yy = np.meshgrid(x, y)                                                  # xx is an array of ny copies of x (yy analogue)
@@ -246,8 +247,8 @@ class Coil_Layup():
         yy, zz = np.meshgrid(y, z)
         yz_plane = np.column_stack([np.zeros(yy.size), yy.ravel(), zz.ravel()])
 
+        # Create triangles for the square mesh, completely filling the meshing plane
         triangles_xy = []
-
 
         for i in range(ny - 1):
             for j in range(nx - 1):
@@ -263,51 +264,43 @@ class Coil_Layup():
 
         triangles_xy = np.array(triangles_xy)
 
+        # Construct a trimesh object from the meshes
         triangles_xz = triangles_xy.copy()
         triangles_yz = triangles_xy.copy()
 
-        tri_xy = trimesh.Trimesh(xy_plane,triangles_xy)
-        tri_xz = trimesh.Trimesh(xz_plane,triangles_xz)
-        tri_yz = trimesh.Trimesh(yz_plane,triangles_yz)
+        # Construct a trimesh object from the meshes
+        tri_xy = trimesh.Trimesh(vertices = xy_plane, faces = triangles_xy, process = False)
+        tri_xz = trimesh.Trimesh(vertices = xz_plane, faces = triangles_xz, process = False)
+        tri_yz = trimesh.Trimesh(vertices = yz_plane, faces = triangles_yz, process = False)
 
-        tri_xy = tri_xy.subdivide().subdivide()#.subdivide()
-        tri_xz = tri_xz.subdivide().subdivide()#.subdivide()
-        tri_yz = tri_yz.subdivide().subdivide()#.subdivide()
+        tri_xy = tri_xy.subdivide().subdivide()
+        tri_xz = tri_xz.subdivide().subdivide()
+        tri_yz = tri_yz.subdivide().subdivide()
 
-        x = tri_xz.vertices[:, 0]
-        z = tri_xz.vertices[:, 2]
-        faces = tri_xz.faces
+        # XY faces (top/bottom)
+        self.mesh_top = tri_xy.copy()
+        self.mesh_top.apply_translation([0, 0, +self.coil_plane_dist_to_origin_z])
 
-        # coil_loc = distance to origin! -> Distance to wall = 1/2 room_length - coil_loc -> already defined in dimensions
-        plus_off_xy = np.array([0,0,self.coil_plane_dist_to_origin_z])
-        minus_off_xy = np.array([0,0,-self.coil_plane_dist_to_origin_z])
-        plus_off_xz = np.array([0,self.coil_plane_dist_to_origin_y,0])
-        minus_off_xz = np.array([0,-self.coil_plane_dist_to_origin_y,0])
-        plus_off_yz = np.array([self.coil_plane_dist_to_origin_x,0,0])
-        minus_off_yz = np.array([-self.coil_plane_dist_to_origin_x,0,0])
+        self.mesh_bottom = tri_xy.copy()
+        self.mesh_bottom.apply_translation([0, 0, -self.coil_plane_dist_to_origin_z])
 
-        self.coil_plus_xy = trimesh.Trimesh(
-            tri_xy.vertices+plus_off_xy, tri_xy.faces, process=False
-        )
-        self.coil_minus_xy = trimesh.Trimesh(
-            tri_xy.vertices+minus_off_xy, tri_xy.faces, process=False
-        )
-        self.coil_plus_xz = trimesh.Trimesh(
-            tri_xz.vertices+plus_off_xz, tri_xz.faces, process=False
-        )
-        self.coil_minus_xz = trimesh.Trimesh(
-            tri_xz.vertices+minus_off_xz, tri_xz.faces, process=False
-        )
-        self.coil_plus_yz = trimesh.Trimesh(
-            tri_yz.vertices+plus_off_yz, tri_yz.faces, process=False
-        )
-        self.coil_minus_yz = trimesh.Trimesh(
-            tri_yz.vertices+minus_off_yz, tri_yz.faces, process=False
-        )
+        # XZ faces (front/back)
+        self.mesh_front = tri_xz.copy()
+        self.mesh_front.apply_translation([0, +self.coil_plane_dist_to_origin_y, 0])
 
+        self.mesh_back = tri_xz.copy()
+        self.mesh_back.apply_translation([0, -self.coil_plane_dist_to_origin_y, 0])
+
+        # YZ faces (left/right)
+        self.mesh_right = tri_yz.copy()
+        self.mesh_right.apply_translation([+self.coil_plane_dist_to_origin_x, 0, 0])
+
+        self.mesh_left = tri_yz.copy()
+        self.mesh_left.apply_translation([-self.coil_plane_dist_to_origin_x, 0, 0])
 
         # Remove the door!!!
-        if self.usable_length_x == 0 or self.usable_length_z == 0:
+        # Safety feature
+        if self.coil_plane_dist_to_origin_x == 0 or self.coil_plane_dist_to_origin_z == 0:
             self.door_removal = False                                   # If the wall containing the door does not exist, the dorr can not exist
 
         if self.door_removal == True:
@@ -323,10 +316,11 @@ class Coil_Layup():
 
             # print(f"Before loop: door_faces len={len(door_faces)}, front_wall_faces len={len(front_wall_faces)}")
 
-            for fi, face in enumerate(self.coil_minus_xz.faces):
-                v0, v1, v2 = face                                           # Assign each corner of the triangle to a vertex index
-                xpts = [x[v0], x[v1], x[v2]]                                # Get the x-coordinates of the triangle vertices
-                zpts = [z[v0], z[v1], z[v2]]                                # Get the z-coordinates of the triangle vertices
+            # Note that the door is located in the "back-plane"
+            for fi, face in enumerate(self.mesh_back.faces):
+                pts = self.mesh_back.vertices[face]
+                xpts = pts[:, 0]                                # Get the x-coordinates of the triangle vertices
+                zpts = pts[:, 2]                                # Get the z-coordinates of the triangle vertices
                 
                 # All 3 vertices inside door rectangle?
                 if (all(door_xmin <= px <= door_xmax for px in xpts) and    # Check door
@@ -349,54 +343,55 @@ class Coil_Layup():
             # Wall mesh
             wall_vertex_indices = np.unique(front_wall_faces.ravel())
             wall_vertex_map = {old_idx: new_idx for new_idx, old_idx in enumerate(wall_vertex_indices)}
-            wall_vertices = self.coil_minus_xz.vertices[wall_vertex_indices]
+            wall_vertices = self.mesh_back.vertices[wall_vertex_indices]
             wall_faces_remapped = np.array([[wall_vertex_map[v] for v in face] for face in front_wall_faces])
-            wall_mesh = trimesh.Trimesh(wall_vertices, wall_faces_remapped, process=False)
+            wall_mesh = trimesh.Trimesh(vertices = wall_vertices, faces = wall_faces_remapped, process=False)
 
             # Door mesh
             door_vertex_indices = np.unique(door_faces.ravel())
             door_vertex_map = {old_idx: new_idx for new_idx, old_idx in enumerate(door_vertex_indices)}
-            door_vertices = self.coil_minus_xz.vertices[door_vertex_indices].copy()
+            door_vertices = self.mesh_back.vertices[door_vertex_indices].copy()
             door_faces_remapped = np.array([[door_vertex_map[v] for v in face] for face in door_faces])
-            door_mesh = trimesh.Trimesh(door_vertices, door_faces_remapped, process=False)
+            door_mesh = trimesh.Trimesh(vertices = door_vertices, faces = door_faces_remapped, process=False)
 
             # Combined mesh with gap
-            self.coil_minus_xz = trimesh.util.concatenate([wall_mesh, door_mesh])
+            self.mesh_back = trimesh.util.concatenate([wall_mesh, door_mesh])
+
+            # Note: Wall_mesh and door_mesh remain available for individual boundary condition application
 
         else:
             pass
         
-        # wall_mesh and door_mesh remain available for individual boundary condition application
-        
         # Combine the meshes. Switch to special cases, if there are usable_lengths of 0 somewhere!
-        if self.usable_length_x == 0:
-            self.total_planes = combine_meshes((
-                self.coil_plus_yz,self.coil_minus_yz
-                ))
-        elif self.usable_length_y == 0:
-            self.total_planes = combine_meshes((
-                self.coil_plus_xz, self.coil_minus_xz,
-                ))
-        elif self.usable_length_z == 0:
-            self.total_planes = combine_meshes((
-                self.coil_plus_xy,self.coil_minus_xy,
-                ))
-        elif self.usable_length_x == 0 and (self.usable_length_y == 0 or self.usable_length_z == 0) or self.usable_length_y == 0 and self.usable_length_z == 0:
-            self.total_planes = []
-            print('The mesh collapsed into a line or a point which can not be meshed! Chnage the parameters of *usable_length*. Some of them are nonsense!')
-        else:
-            self.total_planes=combine_meshes((
-                self.coil_plus_xy,self.coil_minus_xy,
-                self.coil_plus_xz, self.coil_minus_xz,
-                self.coil_plus_yz,self.coil_minus_yz
-                ))
+        
+        self.total_planes=combine_meshes((
+            self.mesh_top,self.mesh_bottom,
+            self.mesh_front, self.mesh_back,
+            self.mesh_right,self.mesh_left
+            ))
+        
+
+        # The folling lines can be used, if mesh boundaries at the corners are connected. Note that the door boundary is not effected!
+        # self.total_planes.merge_vertices(digits_vertex = 6)
+
+        # self.total_planes.update_faces(self.total_planes.unique_faces())
+        # self.total_planes.remove_unreferenced_vertices()
+        # self.total_planes.fix_normals()
+
+        # self.total_planes.merge_vertices(digits_vertex=6)
+
+        self.coil_plane_boundaries =  trimesh.grouping.group_rows(
+            self.total_planes.edges_sorted,
+            require_count=1
+            )
+
 
 class Mu_material():
     def __init__(self, dim, thickness):
         # Initialise variables from constructor input
         self.dim = dim
         self.thickness = thickness
-        self.n_discretization = 10
+        self.n_discretization = 12
 
         # Discretise the space available for the mesh
         nx, ny, nz = self.n_discretization, self.n_discretization, self.n_discretization
@@ -482,7 +477,6 @@ class Mu_material():
         
         # remove duplicate geometry
         self.total_shield.update_faces(self.total_shield.unique_faces())
-        self.total_shield.update_faces(self.total_shield.unique_faces())
         self.total_shield.remove_unreferenced_vertices()
         self.total_shield.fix_normals()
 
@@ -513,5 +507,4 @@ class Mu_material():
         self.inner_idx = bfieldtools.utils.find_mesh_boundaries(self.total_shield)
 
         #points_inside = total_shield.vertices - eps * total_shield.vertex_normals
-        scale = (size - self.thickness) / size
-        self.points_inside = self.total_shield.vertices * scale
+        self.points_inside = self.total_shield.vertices - self.thickness * self.total_shield.vertex_normals
