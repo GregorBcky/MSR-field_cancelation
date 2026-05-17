@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import scipy.interpolate
 
 def load_data_from_folder(folder_path_no_current, folder_path_with_current, L_x, L_y, L_z, step_size, shift_x, shift_y, shift_z):
     '''L_x, L_y, L_z: dimensions of the measurement volume in [m]
@@ -259,9 +260,8 @@ def plot_stream_function(vertices, stream_function):
     plt.tight_layout()
     plt.show()
 
-def calculation_target_points(n, coil_plane_dist_to_origin_x, coil_plane_dist_to_origin_y, coil_plane_dist_to_origin_z):
+def calculation_target_points(n, coil_plane_dist_to_origin_x, coil_plane_dist_to_origin_y, coil_plane_dist_to_origin_z, safety_distance):
     target_point_coord_calc = []
-    safety_distance = 0.01
     point_coord_calc_x = np.linspace(-(coil_plane_dist_to_origin_x - safety_distance), +coil_plane_dist_to_origin_x - safety_distance, n)
     point_coord_calc_y = np.linspace(-(coil_plane_dist_to_origin_y - safety_distance), +coil_plane_dist_to_origin_y - safety_distance, n)
     point_coord_calc_z = np.linspace(-(coil_plane_dist_to_origin_z - safety_distance), +coil_plane_dist_to_origin_z - safety_distance, n)
@@ -273,3 +273,24 @@ def calculation_target_points(n, coil_plane_dist_to_origin_x, coil_plane_dist_to
 
     target_point_coord_calc = np.array(target_point_coord_calc)
     return target_point_coord_calc
+
+def interpolate_B_on_coarse_grid(num_calc_target_points_fine, target_point_coord_calc_coarse, coil_plane_dist_to_origin_x, coil_plane_dist_to_origin_y, coil_plane_dist_to_origin_z, safety_distance, B_coil_predicted_fine):
+    '''Note: This function is currently not used in the code. Still it is kept and not accessed just in case ;)'''
+
+    x_fine = np.linspace(-(coil_plane_dist_to_origin_x - safety_distance), +(coil_plane_dist_to_origin_x - safety_distance), num_calc_target_points_fine)
+    y_fine = np.linspace(-(coil_plane_dist_to_origin_y - safety_distance), +(coil_plane_dist_to_origin_y - safety_distance), num_calc_target_points_fine)
+    z_fine = np.linspace(-(coil_plane_dist_to_origin_z - safety_distance), +(coil_plane_dist_to_origin_z - safety_distance), num_calc_target_points_fine)
+
+    n = int((B_coil_predicted_fine.shape[0]+1)**(1/3))
+    B_coil_predicted_fine_reshaped = B_coil_predicted_fine.reshape(n, n, n, 3)
+
+    Bx_interp = scipy.interpolate.RegularGridInterpolator((x_fine, y_fine, z_fine), B_coil_predicted_fine_reshaped[..., 0], bounds_error=False, fill_value=None)
+    By_interp = scipy.interpolate.RegularGridInterpolator((x_fine, y_fine, z_fine), B_coil_predicted_fine_reshaped[..., 1], bounds_error=False, fill_value=None)
+    Bz_interp = scipy.interpolate.RegularGridInterpolator((x_fine, y_fine, z_fine), B_coil_predicted_fine_reshaped[..., 2], bounds_error=False, fill_value=None)
+
+    Bx_new = Bx_interp(target_point_coord_calc_coarse)
+    By_new = By_interp(target_point_coord_calc_coarse)
+    Bz_new = Bz_interp(target_point_coord_calc_coarse)
+
+    B_coil_predicted_coarse = np.column_stack((Bx_new, By_new, Bz_new))
+    return B_coil_predicted_coarse
