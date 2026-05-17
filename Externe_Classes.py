@@ -229,7 +229,7 @@ class Coil_Layup():
         self.door_offset_x = door_offset_x
 
         # Create eqidistant spacing in each direction as basis for the grid
-        nx,ny,nz = 12, 12, 12
+        nx,ny,nz = 10, 10, 10
         # size=coil_plane / 2                                                    # Size of the grid in each direction (Note: coil_loc = 0.9)
         x = np.linspace(-self.coil_plane_dist_to_origin_x, self.coil_plane_dist_to_origin_x, nx)
         y = np.linspace(-self.coil_plane_dist_to_origin_y, self.coil_plane_dist_to_origin_y, ny)
@@ -391,7 +391,7 @@ class Mu_material():
         # Initialise variables from constructor input
         self.dim = dim
         self.thickness = thickness
-        self.n_discretization = 12
+        self.n_discretization = 10
 
         # Discretise the space available for the mesh
         nx, ny, nz = self.n_discretization, self.n_discretization, self.n_discretization
@@ -473,7 +473,7 @@ class Mu_material():
             ])
 
         # CRUCIAL: Repair seams/duplicates
-        self.total_shield.merge_vertices(digits_vertex = 6)  # Merge nahe Vertices (Kanten)
+        self.total_shield.merge_vertices(digits_vertex = 6)  # Merge close Vertices (Edges of the cube)
         
         # remove duplicate geometry
         self.total_shield.update_faces(self.total_shield.unique_faces())
