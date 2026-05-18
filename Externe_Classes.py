@@ -458,11 +458,11 @@ class Coil_Layup():
 
 
 class Mu_material():
-    def __init__(self, dim, thickness):
+    def __init__(self, n, dim, thickness):
         # Initialise variables from constructor input
         self.dim = dim
         self.thickness = thickness
-        self.n_discretization = 10
+        self.n_discretization = n
 
         # Discretise the space available for the mesh
         nx, ny, nz = self.n_discretization, self.n_discretization, self.n_discretization
