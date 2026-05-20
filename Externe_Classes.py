@@ -395,51 +395,51 @@ class Coil_Layup():
         face_with_current = [[] for _ in range(2 * self.number_of_coils_y * self.number_of_coils_z + 2 * self.number_of_coils_x * self.number_of_coils_z + 2 * self.number_of_coils_x * self.number_of_coils_y)]
 
         for f_idx, faces in enumerate(self.total_planes.faces):
-            r = self.total_planes.vertices[faces]                                          # shape (3, 3) -> Coordinates of the vertices belonging to the face
+            r = self.total_planes.vertices[faces]                                           # shape (3, 3) -> Coordinates of the vertices belonging to the face
 
             # x = const plane
             if np.allclose(r[:, 0], r[0, 0]):                                               # All vertices are on the YZ-plane (left/right)
-                for coil in range(2 * self.number_of_coils_y * self.number_of_coils_z):   # Iterarte through all coils (2* since ther are two yz-planes)
-                    center_y, center_z = self.grid_yz[coil][1], self.grid_yz[coil][2]     # Assign center points of the coil
+                for coil in range(2 * self.number_of_coils_y * self.number_of_coils_z):     # Iterarte through all coils (2* since ther are two yz-planes)
+                    center_y, center_z = self.grid_yz[coil][1], self.grid_yz[coil][2]       # Assign center points of the coil
                     d_to_coil_center = (r[:, 1] - center_y)**2 + (r[:, 2] - center_z)**2    # Distance to the coil center
 
-                    if np.all(d_to_coil_center < (self.coil_diameter / 2)**2):             # All vertices of this face are inside the coil
+                    if np.all(d_to_coil_center < (self.coil_diameter / 2)**2):              # All vertices of this face are inside the coil
                         face_inside_loop[coil].append(f_idx)
-                    elif np.all(d_to_coil_center > (self.coil_diameter / 2)**2):           # All vertices of this face are outside the circle
+                    elif np.all(d_to_coil_center > (self.coil_diameter / 2)**2):            # All vertices of this face are outside the circle
                         face_outside_loop[coil].append(f_idx)
                     elif np.any(d_to_coil_center < (self.coil_diameter / 2)**2 ) and np.any(d_to_coil_center > (self.coil_diameter / 2)**2): # The face is intersected by the coil, since some vertices are inside it, and others are outside
                         face_with_current[coil].append(f_idx)
 
             # y = const plane
             elif np.allclose(r[:, 1], r[0, 1]):                                             # All vertices are on the XZ-plane (front/back)
-                for coil in range(2 * self.number_of_coils_x * self.number_of_coils_z):   # Iterarte through all coils (2* since ther are two yz-planes)
-                    center_x, center_z = self.grid_xz[coil][0], self.grid_xz[coil][2]     # Assign center points of the coil
+                for coil in range(2 * self.number_of_coils_x * self.number_of_coils_z):     # Iterarte through all coils (2* since ther are two yz-planes)
+                    center_x, center_z = self.grid_xz[coil][0], self.grid_xz[coil][2]       # Assign center points of the coil
                     d_to_coil_center = (r[:, 0] - center_x)**2 + (r[:, 2] - center_z)**2    # Distance to the coil center
 
-                    if np.all(d_to_coil_center < (self.coil_diameter / 2)**2):             # All vertices of this face are inside the coil
+                    if np.all(d_to_coil_center < (self.coil_diameter / 2)**2):              # All vertices of this face are inside the coil
                         face_inside_loop[coil].append(f_idx)
-                    elif np.all(d_to_coil_center > (self.coil_diameter / 2)**2):           # All vertices of this face are outside the circle
+                    elif np.all(d_to_coil_center > (self.coil_diameter / 2)**2):            # All vertices of this face are outside the circle
                         face_outside_loop[coil].append(f_idx)
                     elif np.any(d_to_coil_center < (self.coil_diameter / 2)**2 ) and np.any(d_to_coil_center > (self.coil_diameter / 2)**2): # The face is intersected by the coil, since some vertices are inside it, and others are outside
                         face_with_current[coil].append(f_idx)
 
             # z = const plane
             elif np.allclose(r[:, 2], r[0, 2]):                                             # All vertices are on the XY-plane (top/bottom)
-                for coil in range(2 * self.number_of_coils_x * self.number_of_coils_y):   # Iterarte through all coils (2* since ther are two yz-planes)
-                    center_x, center_y = self.grid_xy[coil][0], self.grid_xy[coil][1]     # Assign center points of the coil
+                for coil in range(2 * self.number_of_coils_x * self.number_of_coils_y):     # Iterarte through all coils (2* since ther are two yz-planes)
+                    center_x, center_y = self.grid_xy[coil][0], self.grid_xy[coil][1]       # Assign center points of the coil
                     d_to_coil_center = (r[:, 0] - center_x)**2 + (r[:, 1] - center_y)**2    # Distance to the coil center
 
-                    if np.all(d_to_coil_center < (self.coil_diameter / 2)**2):             # All vertices of this face are inside the coil
+                    if np.all(d_to_coil_center < (self.coil_diameter / 2)**2):              # All vertices of this face are inside the coil
                         face_inside_loop[coil].append(f_idx)
-                    elif np.all(d_to_coil_center > (self.coil_diameter / 2)**2):           # All vertices of this face are outside the circle
+                    elif np.all(d_to_coil_center > (self.coil_diameter / 2)**2):            # All vertices of this face are outside the circle
                         face_outside_loop[coil].append(f_idx)
                     elif np.any(d_to_coil_center < (self.coil_diameter / 2)**2 ) and np.any(d_to_coil_center > (self.coil_diameter / 2)**2): # The face is intersected by the coil, since some vertices are inside it, and others are outside
                         face_with_current[coil].append(f_idx)
 
         stream_function_on_faces = np.zeros(len(self.total_planes.faces))
-        dx = np.abs(self.total_planes.vertices[0][0] - self.total_planes.vertices[1][0])  # dx = dy = dz since the grid is build identically on each side !!!
+        dx = np.abs(self.total_planes.vertices[0][0] - self.total_planes.vertices[1][0])    # dx = dy = dz since the grid is build identically on each side !!!
 
-        for f_idx in range(len(self.total_planes.faces)):                                  # Iterate through all faces
+        for f_idx in range(len(self.total_planes.faces)):                                   # Iterate through all faces
             if any(f_idx in lst for lst in face_inside_loop):                               # for all faces inside the coil do:
                 stream_function_on_faces[f_idx] = self.current * self.n_windings * dx                 # Assign the analytical result of the streamfunction to these faces
             elif any(f_idx in lst for lst in face_with_current):                            # Assign every face which gets intersected by the coil half the value of the inside streamfunction
@@ -447,7 +447,7 @@ class Coil_Layup():
             else:
                 stream_function_on_faces[f_idx] = 0.0                                       # Assign all other faces the value 0 (this is the analytical solution!)
 
-        stream_function_on_vertices = np.zeros(len(self.total_planes.vertices))            # We need to express the stream_function for all vertices, not faces
+        stream_function_on_vertices = np.zeros(len(self.total_planes.vertices))             # We need to express the stream_function for all vertices, not faces
 
         for v_idx in range(len(self.total_planes.vertices)):
             indices = self.total_planes.vertex_faces[v_idx]
