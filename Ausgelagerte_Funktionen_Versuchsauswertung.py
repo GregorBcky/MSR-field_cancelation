@@ -57,19 +57,50 @@ def load_data_from_folder(folder_path_no_current, folder_path_with_current, L_x,
                 mean_Bz = data['mean_Bz_pT'] * 1e-12
             
             else:
-                mean_Bx = 0
-                mean_By = 0
-                mean_Bz = 0
+                mean_Bx = np.nan                                                # These values will get interpolated later on!
+                mean_By = np.nan
+                mean_Bz = np.nan
 
                 print(f'Warning: There are empty measurements which do not contain any B-field information except the measurement position at ({each_target_point}).')
 
             each_B_target = np.array([mean_Bx, mean_By, mean_Bz]).T             # (Npoints, 3)
             B_target_point_with_current.append(each_B_target)
 
+    
 
     # Stack all files into final (total_Npoints, 3) arrays
     target_point_coordinate_test = np.vstack(target_point_coordinate_test)       # (total_Npoints, 3)
     B_target_point_with_current = np.vstack(B_target_point_with_current)         # (total_Npoints, 3)
+
+    # Interpolate missing B-field values in the with-current measurements
+    missing_rows = np.any(np.isnan(B_target_point_with_current), axis=1)
+    if np.any(missing_rows):
+        valid_rows = missing_rows == False
+        valid_points = target_point_coordinate_test[valid_rows]
+        missing_points = target_point_coordinate_test[missing_rows]
+        valid_B = B_target_point_with_current[valid_rows]
+
+        for comp in range(3):
+            interpolated = scipy.interpolate.griddata(
+                valid_points,
+                valid_B[:, comp],
+                missing_points,
+                method = 'linear',
+                fill_value = np.nan
+            )
+
+            if np.any(np.isnan(interpolated)):
+                nearest = scipy.interpolate.griddata(
+                    valid_points,
+                    valid_B[:, comp],
+                    missing_points[np.isnan(interpolated)],
+                    method='nearest'
+                )
+                interpolated[np.isnan(interpolated)] = nearest
+
+            B_target_point_with_current[missing_rows, comp] = interpolated
+
+        print(f'Interpolated {missing_rows.sum()} missing B-field row(s) in with-current target data.')
 
     if target_point_coord.shape != target_point_coordinate_test.shape:           # Note: This only checks if the array shapes are equal. Not its entries!!!
         raise ValueError(f'The coordinates of the target points with and without current do not match. (without: {target_point_coord.shape}; with: {target_point_coordinate_test.shape}) Please check the data files.')
