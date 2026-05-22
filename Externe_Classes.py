@@ -437,13 +437,12 @@ class Coil_Layup():
                         face_with_current[coil].append(f_idx)
 
         stream_function_on_faces = np.zeros(len(self.total_planes.faces))
-        dx = np.abs(self.total_planes.vertices[0][0] - self.total_planes.vertices[1][0])    # dx = dy = dz since the grid is build identically on each side !!!
 
         for f_idx in range(len(self.total_planes.faces)):                                   # Iterate through all faces
             if any(f_idx in lst for lst in face_inside_loop):                               # for all faces inside the coil do:
-                stream_function_on_faces[f_idx] = self.current * self.n_windings * dx                 # Assign the analytical result of the streamfunction to these faces
+                stream_function_on_faces[f_idx] = self.current * self.n_windings            # Assign the analytical result of the streamfunction to these faces
             elif any(f_idx in lst for lst in face_with_current):                            # Assign every face which gets intersected by the coil half the value of the inside streamfunction
-                stream_function_on_faces[f_idx] = 0.5 * self.current * self.n_windings * dx
+                stream_function_on_faces[f_idx] = 0.5 * self.current * self.n_windings
             else:
                 stream_function_on_faces[f_idx] = 0.0                                       # Assign all other faces the value 0 (this is the analytical solution!)
 
