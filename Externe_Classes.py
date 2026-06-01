@@ -230,7 +230,6 @@ class Coil_Layup():
         nx, ny, nz = n, n, n
 
         # Create eqidistant spacing in each direction as basis for the grid
-        # size=coil_plane / 2                                                    # Size of the grid in each direction (Note: coil_loc = 0.9)
         x = np.linspace(-self.coil_plane_dist_to_origin_x, self.coil_plane_dist_to_origin_x, nx)
         y = np.linspace(-self.coil_plane_dist_to_origin_y, self.coil_plane_dist_to_origin_y, ny)
         z = np.linspace(-self.coil_plane_dist_to_origin_z, self.coil_plane_dist_to_origin_z, nz)
@@ -457,18 +456,20 @@ class Coil_Layup():
 
 
 class Mu_material():
-    def __init__(self, n, dim, thickness):
+    def __init__(self, n, height, width, thickness):
         # Initialise variables from constructor input
-        self.dim = dim
+        self.height = height
+        self.width = width
         self.thickness = thickness
         self.n_discretization = n
 
         # Discretise the space available for the mesh
         nx, ny, nz = self.n_discretization, self.n_discretization, self.n_discretization
-        size = self.dim/2                                                    # Size of the grid in each direction (Note: offset = 1.15)
-        x = np.linspace(-size, size, nx)
-        y = np.linspace(-size, size, ny)
-        z = np.linspace(-size, size, nz)
+        size_z = self.height/2                                                    # Size of the grid in each direction (Note: offset = 1.15)
+        size_x_y = self.width/2
+        x = np.linspace(-size_x_y, size_x_y, nx)
+        y = np.linspace(-size_x_y, size_x_y, ny)
+        z = np.linspace(-size_z, size_z, nz)
 
         # Create meshes in each plane seperatly (These are just square meshes -> Arrays holding the vertices. Nothing more)
         # xy-plane = bottom, top
@@ -510,28 +511,27 @@ class Mu_material():
         tri_yz = trimesh.Trimesh(vertices = yz, faces = triangles_yz, process = False)
 
         # Place the meshes to the side, such that a cube (equal side lengths) is created
-        offset = self.dim / 2                   # Location of the shield from the center (normal to surface) = 1/2 shield size (MSR is closed) -> compare to coil distance
         
         # XY faces (top/bottom)
         mesh_top = tri_xy.copy()
-        mesh_top.apply_translation([0, 0, +offset])
+        mesh_top.apply_translation([0, 0, +size_z])
 
         mesh_bottom = tri_xy.copy()
-        mesh_bottom.apply_translation([0, 0, -offset])
+        mesh_bottom.apply_translation([0, 0, -size_z])
 
         # XZ faces (front/back)
         mesh_front = tri_xz.copy()
-        mesh_front.apply_translation([0, +offset, 0])
+        mesh_front.apply_translation([0, +size_x_y, 0])
 
         mesh_back = tri_xz.copy()
-        mesh_back.apply_translation([0, -offset, 0])
+        mesh_back.apply_translation([0, -size_x_y, 0])
 
         # YZ faces (left/right)
         mesh_right = tri_yz.copy()
-        mesh_right.apply_translation([+offset, 0, 0])
+        mesh_right.apply_translation([+size_x_y, 0, 0])
 
         mesh_left = tri_yz.copy()
-        mesh_left.apply_translation([-offset, 0, 0])
+        mesh_left.apply_translation([-size_x_y, 0, 0])
 
         self.total_shield = trimesh.util.concatenate([
             mesh_top,
