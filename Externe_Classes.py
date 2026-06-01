@@ -454,6 +454,73 @@ class Coil_Layup():
 
         return stream_function_on_vertices
 
+    def stream_function_coils_verts(self, current, n_windings):
+
+        self.current = current
+        self.n_windings = n_windings
+
+        stream_function_on_vertices = np.zeros(len(self.total_planes.vertices))
+
+        sf_inside = self.current * self.n_windings
+        sf_on_coil = 0.5 * sf_inside
+        tol = 1e-12
+        r2 = (self.coil_diameter / 2)**2
+
+        for v_idx, v in enumerate(self.total_planes.vertices):
+            x, y, z = v
+
+            assigned = False
+
+            # x = const plane -> YZ coils
+            if np.any(np.isclose(self.total_planes.vertices[:, 0], x)):
+                for coil in range(2 * self.number_of_coils_y * self.number_of_coils_z):
+                    center_y, center_z = self.grid_yz[coil][1], self.grid_yz[coil][2]
+                    d_to_coil_center = (y - center_y)**2 + (z - center_z)**2
+
+                    if np.isclose(d_to_coil_center, r2, atol=tol, rtol=0.0):
+                        stream_function_on_vertices[v_idx] = sf_on_coil
+                        assigned = True
+                        break
+                    elif d_to_coil_center < r2:
+                        stream_function_on_vertices[v_idx] = sf_inside
+                        assigned = True
+                        break
+
+            # y = const plane -> XZ coils
+            elif np.any(np.isclose(self.total_planes.vertices[:, 1], y)):
+                for coil in range(2 * self.number_of_coils_x * self.number_of_coils_z):
+                    center_x, center_z = self.grid_xz[coil][0], self.grid_xz[coil][2]
+                    d_to_coil_center = (x - center_x)**2 + (z - center_z)**2
+
+                    if np.isclose(d_to_coil_center, r2, atol=tol, rtol=0.0):
+                        stream_function_on_vertices[v_idx] = sf_on_coil
+                        assigned = True
+                        break
+                    elif d_to_coil_center < r2:
+                        stream_function_on_vertices[v_idx] = sf_inside
+                        assigned = True
+                        break
+
+            # z = const plane -> XY coils
+            elif np.any(np.isclose(self.total_planes.vertices[:, 2], z)):
+                for coil in range(2 * self.number_of_coils_x * self.number_of_coils_y):
+                    center_x, center_y = self.grid_xy[coil][0], self.grid_xy[coil][1]
+                    d_to_coil_center = (x - center_x)**2 + (y - center_y)**2
+
+                    if np.isclose(d_to_coil_center, r2, atol=tol, rtol=0.0):
+                        stream_function_on_vertices[v_idx] = sf_on_coil
+                        assigned = True
+                        break
+                    elif d_to_coil_center < r2:
+                        stream_function_on_vertices[v_idx] = sf_inside
+                        assigned = True
+                        break
+
+            if not assigned:
+                stream_function_on_vertices[v_idx] = 0.0                                # Vertex is outside of all coils, assign analytical value of 0
+
+        return stream_function_on_vertices
+
 
 class Mu_material():
     def __init__(self, n, height, width, thickness):

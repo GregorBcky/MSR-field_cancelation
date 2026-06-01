@@ -180,13 +180,14 @@ def plot_stream_function(vertices, stream_function):
     v_max = max(stream_function)
     c_map = 'RdBu_r'                # Rot-Blau Colormap (symmetrisch)
     s=40                            # Punktgröße
+    alpha=0.8                       # Transparenz der Punkte
 
     fig_3d = plt.figure(figsize=(12, 10))
     ax_3d = fig_3d.add_subplot(111, projection='3d')  # Fix: fig_3d statt fig
 
     scatter_3d = ax_3d.scatter(
         vertices[:, 0], vertices[:, 1], vertices[:, 2],
-        c=stream_function, cmap='RdBu_r', s=40, alpha=0.7
+        c=stream_function, cmap='RdBu_r', s=40, alpha=0.8, edgecolors = 'none'
     )
 
     cbar_3d = plt.colorbar(scatter_3d, shrink=0.6, pad=0.1)
@@ -217,7 +218,9 @@ def plot_stream_function(vertices, stream_function):
         cmap = c_map,
         s = s,                
         vmin = v_min,
-        vmax = v_max
+        vmax = v_max,
+        alpha = alpha,
+        edgecolors = 'none'
     )
     cbar1 = plt.colorbar(scatter1, shrink=0.6, pad=0.1)
     cbar1.set_label(r'Stromfunktion $\psi$', fontsize=14, rotation=270, labelpad=20)
@@ -232,7 +235,9 @@ def plot_stream_function(vertices, stream_function):
         cmap = c_map,
         s = s,                
         vmin = v_min,
-        vmax = v_max
+        vmax = v_max,
+        alpha = alpha,
+        edgecolors = 'none'
     )
     cbar2 = plt.colorbar(scatter2, shrink=0.6, pad=0.1)
     cbar2.set_label(r'Stromfunktion $\psi$', fontsize=14, rotation=270, labelpad=20)
@@ -247,7 +252,9 @@ def plot_stream_function(vertices, stream_function):
         cmap = c_map,
         s = s,                
         vmin = v_min,
-        vmax = v_max
+        vmax = v_max,
+        alpha = alpha,
+        edgecolors = 'none'
     )
     cbar3 = plt.colorbar(scatter3, shrink=0.6, pad=0.1)
     cbar3.set_label(r'Stromfunktion $\psi$', fontsize=14, rotation=270, labelpad=20)
@@ -262,7 +269,9 @@ def plot_stream_function(vertices, stream_function):
         cmap = c_map,
         s = s,                
         vmin = v_min,
-        vmax = v_max
+        vmax = v_max,
+        alpha = alpha,
+        edgecolors = 'none'
     )
     cbar4 = plt.colorbar(scatter4, shrink=0.6, pad=0.1)
     cbar4.set_label(r'Stromfunktion $\psi$', fontsize=14, rotation=270, labelpad=20)
@@ -278,7 +287,9 @@ def plot_stream_function(vertices, stream_function):
         cmap = c_map,
         s = s,                
         vmin = v_min,
-        vmax = v_max
+        vmax = v_max,
+        alpha = alpha,
+        edgecolors = 'none'
     )
     cbar5 = plt.colorbar(scatter5, shrink=0.6, pad=0.1)
     cbar5.set_label(r'Stromfunktion $\psi$', fontsize=14, rotation=270, labelpad=20)
@@ -293,7 +304,9 @@ def plot_stream_function(vertices, stream_function):
         cmap = c_map,
         s = s,                
         vmin = v_min,
-        vmax = v_max
+        vmax = v_max,
+        alpha = alpha,
+        edgecolors = 'none'
     )
     cbar6 = plt.colorbar(scatter6, shrink=0.6, pad=0.1)
     cbar6.set_label(r'Stromfunktion $\psi$', fontsize=14, rotation=270, labelpad=20)
