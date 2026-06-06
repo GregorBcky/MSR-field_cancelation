@@ -4,6 +4,8 @@ import matplotlib.tri as mtri
 import trimesh
 import bfieldtools
 from bfieldtools.utils import combine_meshes
+import scipy.sparse as sp
+import scipy.sparse.linalg as spla
 
 import scipy.constants
 mu_0=scipy.constants.mu_0
@@ -230,9 +232,9 @@ class Coil_Layup():
         nx, ny, nz = n, n, n
 
         # Create eqidistant spacing in each direction as basis for the grid
-        x = np.linspace(-self.coil_plane_dist_to_origin_x, self.coil_plane_dist_to_origin_x, nx)
-        y = np.linspace(-self.coil_plane_dist_to_origin_y, self.coil_plane_dist_to_origin_y, ny)
-        z = np.linspace(-self.coil_plane_dist_to_origin_z, self.coil_plane_dist_to_origin_z, nz)
+        x = np.linspace(-self.usable_length_x/2, self.usable_length_x/2, nx)
+        y = np.linspace(-self.usable_length_y/2, self.usable_length_y/2, ny)
+        z = np.linspace(-self.usable_length_z/2, self.usable_length_z/2, nz)
 
         #xy-plane = bottom, top -> stores points (vertices) of 2D square grid
         xx, yy = np.meshgrid(x, y)                                                  # xx is an array of ny copies of x (yy analogue)
@@ -384,6 +386,8 @@ class Coil_Layup():
             require_count=1
             )
         
+        self.mesh_conductor = bfieldtools.mesh_conductor.MeshConductor(mesh_obj=self.total_planes, fix_normals=True)
+        
     def stream_function_coils (self, current, n_windings):
 
         self.current = current
@@ -520,6 +524,7 @@ class Coil_Layup():
                 stream_function_on_vertices[v_idx] = 0.0                                # Vertex is outside of all coils, assign analytical value of 0
 
         return stream_function_on_vertices
+    
 
 
 class Mu_material():
