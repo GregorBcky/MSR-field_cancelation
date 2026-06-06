@@ -1,7 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.tri as mtri
 import os
 import scipy.interpolate
+from scipy.interpolate import griddata
 
 def load_data_from_folder(folder_path_no_current, folder_path_with_current, L_x, L_y, L_z, step_size, shift_x, shift_y, shift_z):
     '''L_x, L_y, L_z: dimensions of the measurement volume in [m]
@@ -350,3 +352,281 @@ def interpolate_B_on_coarse_grid(num_calc_target_points_fine, target_point_coord
 
     B_coil_predicted_coarse = np.column_stack((Bx_new, By_new, Bz_new))
     return B_coil_predicted_coarse
+
+def points_close(p1, p2, tol):
+    return np.linalg.norm(p1 - p2) < tol
+
+def stitch_segments(segments, tol=1e-6):
+    """
+    segments: list of arrays, each array has shape (2, 3) mening two points in 3D space
+    returns: list of ordered polylines
+    """
+    remaining = [seg.copy() for seg in segments if len(seg) > 0]        # Create a copy of the segments list to modify while iterating
+    ordered_lines = []                                                  # This will hold the final ordered polylines
+
+    while remaining:                                                    # While there are still segments to process
+        line = remaining.pop(0).copy()                                  # Start a new line with the first segment and remove it from the remaining list
+
+        changed = True
+        while changed:
+            changed = False
+            i = 0
+            while i < len(remaining):
+                seg = remaining[i]
+
+                start_line = line[0]
+                end_line = line[-1]
+                start_seg = seg[0]
+                end_seg = seg[-1]
+
+                # Check if the start or end of the current line is close to the start or end of the segment (in any combination)
+                if points_close(end_line, start_seg, tol):
+                    line = np.vstack([line, seg[1:]])
+                    remaining.pop(i)
+                    changed = True
+                    continue
+                elif points_close(end_line, end_seg, tol):
+                    line = np.vstack([line, seg[-2::-1]])
+                    remaining.pop(i)
+                    changed = True
+                    continue
+                elif points_close(start_line, end_seg, tol):
+                    line = np.vstack([seg[:-1], line])
+                    remaining.pop(i)
+                    changed = True
+                    continue
+                elif points_close(start_line, start_seg, tol):
+                    line = np.vstack([seg[::-1][:-1], line])
+                    remaining.pop(i)
+                    changed = True
+                    continue
+
+                i += 1
+
+        ordered_lines.append(line)
+
+    return ordered_lines
+
+
+def find_all_contours(stream_func_coil, all_coords_verts, Steps, refinement_factor):
+    # Reshape stream function for each plane (if needed for plotting or further analysis)
+    vertices_per_plane = int(len(stream_func_coil) / 6)  # All 6 planes in the coil layout have the same numbers of vertices by contruction
+    stream_func_each_plane = stream_func_coil.reshape(6, vertices_per_plane)
+
+    # Get coordinates on surface
+    coords = all_coords_verts.reshape(6, vertices_per_plane, 3)
+    x = coords[:, :, 0]
+    y = coords[:, :, 1]
+    z = coords[:, :, 2]
+
+    # Create contour levels with desired spacing
+    # The spacing value corresponds to the current in the wires, since the stream function is proportional to the current. Adjust this value to get more or fewer contour lines.
+    # contour_levels = np.arange(stream_func_coil.min(), stream_func_coil.max(), Spacing)  # Adjust spacing as needed
+    contour_levels = np.linspace(stream_func_coil.min(), stream_func_coil.max(), Steps)
+    print(f'There are {len(contour_levels)} global contour levels with a current of {(stream_func_coil.max()-stream_func_coil.min())/Steps} A in the stream function.')
+    print('Note, that the more wires will lead to a closer approximation of the desired field, but also to a more complex coil layout and higher fabrication costs.')
+
+    all_contours = []
+    for face in range(6):
+        print(f"\nProcessing plane {face + 1}/6...")
+        
+        # Get data for this specific plane
+        x_plane = x[face]  # shape (vertices_per_plane,)
+        y_plane = y[face]  # shape (vertices_per_plane,)
+        z_plane = z[face]  # shape (vertices_per_plane,)
+        stream_plane = stream_func_each_plane[face]  # shape (vertices_per_plane,)
+        
+        # Find which coordinate is constant (plane orientation)
+        x_range = x_plane.max() - x_plane.min()
+        y_range = y_plane.max() - y_plane.min()
+        z_range = z_plane.max() - z_plane.min()
+        
+        ranges = [x_range, y_range, z_range]
+        const_dim = np.argmin(ranges)           # 0=x, 1=y, 2=z is constant
+        
+        # Project to 2D based on plane orientation
+        if const_dim == 0:                      # yz-plane (x is constant)
+            u = y_plane
+            v = z_plane
+            plane_offset = x_plane[0]
+            coord_map = [1, 2, 0]               # [v_idx, const_idx, u_idx]
+        elif const_dim == 1:                    # xz-plane (y is constant)
+            u = x_plane
+            v = z_plane
+            plane_offset = y_plane[0]
+            coord_map = [0, 2, 1]               # [u_idx, const_idx, v_idx]
+        elif const_dim == 2:                    # xy-plane (z is constant)
+            u = x_plane
+            v = y_plane
+            plane_offset = z_plane[0]
+            coord_map = [0, 1, 2]               # [u_idx, v_idx, const_idx]
+        
+            
+        ui_2d = np.linspace(u.min(), u.max(), refinement_factor)
+        vi_2d = np.linspace(v.min(), v.max(), refinement_factor)
+        ui_mesh, vi_mesh = np.meshgrid(ui_2d, vi_2d, indexing='ij')
+
+        # Interpolate stream function onto 2D grid (linearly)
+        stream_2d = scipy.interpolate.griddata((u, v), stream_plane,
+                     (ui_mesh, vi_mesh), method='linear')
+        
+        
+        # Initialize contour list for this plane
+        plane_contours = []
+        
+        # For each contour level, extract the contour points -> Therefore the crossings of the contour level with each grid-cell-edge is computed.
+        # Since the contour is entering and leaving, everygridcell yield an array of two crossing points. Each crossing point must appear twice (once in each adjacent cell)!
+        # The array hoolding both crossing points is called segment!                                   
+        for level in contour_levels:          # Itersate through all contour levels and extract the contour points for each level
+            # Skip if level is outside the valid range for this plane
+            plane_min = stream_2d.min()
+            plane_max = stream_2d.max()
+            
+            if level < plane_min or level > plane_max:
+                continue
+            
+            # Find contour point by marching through grid cells
+            level_segments_2d = []                                  # Holds a list of arrays, which contain the two crossing points of the contour of every cell in the 2D-plane
+            for i in range(len(ui_2d) - 1):
+                for j in range(len(vi_2d) - 1):
+                    # Get 4 corners of this cell
+                    s00 = stream_2d[i, j]                           # Value of interpolated stream function at the vertex {i, j}
+                    s10 = stream_2d[i+1, j]                         # Value of interpolated stream function at the vertex {i+1, j}
+                    s01 = stream_2d[i, j+1]                         # Value of interpolated stream function at the vertex {i, j+1}
+                    s11 = stream_2d[i+1, j+1]                       # Value of interpolated stream function at the vertex {i+1, j+1}
+
+                    # Skip if any value is NaN
+                    if any(np.isnan(v) for v in [s00, s10, s01, s11]):
+                        continue
+                    
+                    # Find if level crosses the cell
+                    diff = [s00 - level, s10 - level, s01 - level, s11 - level]
+                    
+                    # Check edges for crossings
+                    intersections = []                              # This array holds the two points, where the contour enters and leaves the cell. (Array of 2 2D-points)
+                    
+                    # Bottom edge (0-1)
+                    if diff[0] * diff[1] < 0:                       # If the difference between the current level and the streamfunction changes sign -> there is a crossing
+                        t = -diff[0] / (diff[1] - diff[0])          # linear interpolation to find the crossing point along the cell edge
+                        u_int = ui_2d[i] + t * (ui_2d[i+1] - ui_2d[i])
+                        v_int = vi_2d[j]
+                        intersections.append((u_int, v_int))        # Append the crossing point to the list of intersections for this cell
+                    
+                    # Left edge (0-2)
+                    if diff[0] * diff[2] < 0:
+                        t = -diff[0] / (diff[2] - diff[0])
+                        u_int = ui_2d[i]
+                        v_int = vi_2d[j] + t * (vi_2d[j+1] - vi_2d[j])
+                        intersections.append((u_int, v_int))
+                    
+                    # Right edge (1-3)
+                    if diff[1] * diff[3] < 0:
+                        t = -diff[1] / (diff[3] - diff[1])
+                        u_int = ui_2d[i+1]
+                        v_int = vi_2d[j] + t * (vi_2d[j+1] - vi_2d[j])
+                        intersections.append((u_int, v_int))
+                    
+                    # Top edge (2-3)
+                    if diff[2] * diff[3] < 0:
+                        t = -diff[2] / (diff[3] - diff[2])
+                        u_int = ui_2d[i] + t * (ui_2d[i+1] - ui_2d[i])
+                        v_int = vi_2d[j+1]
+                        intersections.append((u_int, v_int))
+                    
+                    # If we have 2 intersections (entering and exiting), we have a contour segment
+                    if len(intersections) == 2:
+                        level_segments_2d.append(np.array(intersections))
+                    
+            
+            level_segments_3d = []                      # Initialise the 3D segment array. In this array the segment coordinates (2 2D-points) are transformed back to 3D coordinates by adding the offset
+            for seg2d in level_segments_2d:
+                seg3d = np.zeros((2, 3))
+                seg3d[:, coord_map[0]] = seg2d[:, 0]
+                seg3d[:, coord_map[1]] = seg2d[:, 1]
+                seg3d[:, coord_map[2]] = plane_offset
+                level_segments_3d.append(seg3d)         # This array holds the segments in the order in which they were found. (small (u, v) -> large (u, v)) not in order
+
+            if len(level_segments_3d) > 0:              # If the contour exists, stitch it together, such that all the 2 3D-point segments are connected. This also means getting rid of the second copy of each point!
+                stitched_level_contours = stitch_segments(level_segments_3d, tol=1e-8)
+                plane_contours.extend(stitched_level_contours)
+                # print(f'  Stitching...plane{face+1}: {len(stitched_level_contours[0])} segments')
+        
+        # Add this plane's contours to the master list
+        all_contours.append(plane_contours)             # This list contains the coordinates of all points, of all contours, of all faces.
+        print(f"    Plane {face + 1}: extracted {len(plane_contours)} contours")
+
+    return all_contours
+
+def plot_contours(all_contours, stream_func_coil, total_coord, Steps):
+    # plot the isolines of the streamfunction for each plane
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    axes = axes.flatten()
+
+    face_titles = [
+        "Face 1: Top (xy-plane)",
+        "Face 2: Bottom (xy-plane)",
+        "Face 3: Back (xz-plane)",
+        "Face 4: Front (xz-plane)",
+        "Face 5: Right (yz-plane)",
+        "Face 6: Left (yz-plane)"
+    ]
+
+    vertices_per_plane = int(len(stream_func_coil) / 6)
+    stream_func_each_plane = stream_func_coil.reshape(6, vertices_per_plane)
+    coords = total_coord.reshape(6, vertices_per_plane, 3)
+    x = coords[:, :, 0]
+    y = coords[:, :, 1]
+    z = coords[:, :, 2]
+
+    for face_idx in range(6):
+        ax = axes[face_idx]
+        ax.set_title(face_titles[face_idx], fontsize=12)
+
+        x_face = x[face_idx]
+        y_face = y[face_idx]
+        z_face = z[face_idx]
+        scalar_face = stream_func_each_plane[face_idx]
+
+        x_range = x_face.max() - x_face.min()
+        y_range = y_face.max() - y_face.min()
+        z_range = z_face.max() - z_face.min()
+
+        const_dim = np.argmin([x_range, y_range, z_range])
+
+        if const_dim == 0:  # yz-plane
+            u_face = y_face
+            v_face = z_face
+            ax.set_xlabel('y')
+            ax.set_ylabel('z')
+        elif const_dim == 1:  # xz-plane
+            u_face = x_face
+            v_face = z_face
+            ax.set_xlabel('x')
+            ax.set_ylabel('z')
+        else:  # xy-plane
+            u_face = x_face
+            v_face = y_face
+            ax.set_xlabel('x')
+            ax.set_ylabel('y')
+
+        triang = mtri.Triangulation(u_face, v_face)
+
+        bg = ax.tricontourf(triang, scalar_face, levels=30, cmap='viridis', alpha=0.75)
+
+        for contour_idx in range(len(all_contours[face_idx])):
+            contour = all_contours[face_idx][contour_idx]
+
+            if const_dim == 0:
+                ax.plot(contour[:, 1], contour[:, 2], 'b-', linewidth=1.5)
+            elif const_dim == 1:
+                ax.plot(contour[:, 0], contour[:, 2], 'b-', linewidth=1.5)
+            elif const_dim == 2:
+                ax.plot(contour[:, 0], contour[:, 1], 'b-', linewidth=1.5)
+
+        ax.grid(True, alpha=0.3)
+        ax.set_aspect('equal')
+
+    plt.tight_layout()
+    plt.show()
+
+    print(f'The current which needs to flow in every wire is {((stream_func_coil.max()-stream_func_coil.min())/Steps) * 10**3:.3f} mA.')
