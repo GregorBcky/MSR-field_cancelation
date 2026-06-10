@@ -1,9 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
+import scipy
 import os
-import scipy.interpolate
-from scipy.interpolate import griddata
+
+mu_0=scipy.constants.mu_0
+pi=scipy.constants.pi
 
 def load_data_from_folder(folder_path_no_current, folder_path_with_current, L_x, L_y, L_z, step_size, shift_x, shift_y, shift_z):
     '''L_x, L_y, L_z: dimensions of the measurement volume in [m]
@@ -596,18 +598,18 @@ def plot_contours(all_contours, stream_func_coil, total_coord, Steps):
         if const_dim == 0:  # yz-plane
             u_face = y_face
             v_face = z_face
-            ax.set_xlabel('y')
-            ax.set_ylabel('z')
+            ax.set_xlabel('y [m]')
+            ax.set_ylabel('z [m]')
         elif const_dim == 1:  # xz-plane
             u_face = x_face
             v_face = z_face
-            ax.set_xlabel('x')
-            ax.set_ylabel('z')
+            ax.set_xlabel('x [m]')
+            ax.set_ylabel('z [m]')
         else:  # xy-plane
             u_face = x_face
             v_face = y_face
-            ax.set_xlabel('x')
-            ax.set_ylabel('y')
+            ax.set_xlabel('x [m]')
+            ax.set_ylabel('y [m]')
 
         triang = mtri.Triangulation(u_face, v_face)
 
@@ -630,3 +632,331 @@ def plot_contours(all_contours, stream_func_coil, total_coord, Steps):
     plt.show()
 
     print(f'The current which needs to flow in every wire is {((stream_func_coil.max()-stream_func_coil.min())/Steps) * 10**3:.3f} mA.')
+
+
+def reparameterize_by_arc_length(points, n_resample):
+    """
+    Reparameterize a contour (n_points, 3) by arc length for fft preperation.
+
+    Parameters
+    points : ndarray
+        Shape (n_points, 3), ordered along the contour.
+    n_resample : int
+        Number of uniformly spaced points along arc length.
+
+    Returns
+    s_uniform : ndarray
+        Uniform arc-length coordinate (n_resample,)
+        (from 0 to total_length)
+    points_uniform : ndarray
+        Resampled contour points (n_resample, 3)
+    """
+    points = np.asarray(points)                                     # reformulate to np array (from list of lists)
+    if points.ndim != 2 or points.shape[1] != 3:
+        raise ValueError("points must have shape (n_points, 3)")
+
+    # Cumulative arc length
+    diffs = np.diff(points, axis=0)                                 # Compute vektor between two points
+    dists = np.linalg.norm(diffs, axis=1)                           # Calculate length of mentioned vector
+    s = np.concatenate(([0.0], np.cumsum(dists)))                   # np.array holding [[0], [length]]
+    total_length = s[-1]
+
+    if total_length == 0:
+        # Degenerate contour: all points at same location
+        return s, points.copy()
+
+    s_uniform = np.linspace(0, total_length, n_resample)            # Create np.array to hold interpolated coordinates
+
+    # Interpolate each coordinate
+    x_interp = scipy.interpolate.interp1d(s, points[:, 0], kind='linear')
+    y_interp = scipy.interpolate.interp1d(s, points[:, 1], kind='linear')
+    z_interp = scipy.interpolate.interp1d(s, points[:, 2], kind='linear')
+
+    points_uniform = np.column_stack([
+        x_interp(s_uniform),
+        y_interp(s_uniform),
+        z_interp(s_uniform)
+    ])
+
+    return s_uniform, points_uniform
+
+
+def smooth_1d_periodic(signal, n_keep):
+    """
+    Smooth a periodic (prepared) 1D signal by keeping only the lowest n_keep Fourier modes
+    on each side of the spectrum.
+    """
+    signal = np.asarray(signal)                 # np.array holding the coordinates in one direction
+    N = len(signal)
+
+    coeffs = scipy.fft.fft(signal)                        # now contains the fft of the coordinate in one direction
+
+    filtered = np.zeros_like(coeffs)            # shall hold the truncated fft
+
+    n_keep = max(1, min(n_keep, N // 2))        # At least one frequency must be kept! For very short contours, hold less frequencies (N//2)
+    filtered[:n_keep + 1] = coeffs[:n_keep + 1] # copies the DC and lowest positive frequencies
+    filtered[-n_keep:] = coeffs[-n_keep:]       # copies the negative-frequency side of the spectrum
+                                                # Note: Even though for a real signal, the sdes are simply mirrored, we copy both sides of the fft for robustness.
+    smoothed = scipy.fft.ifft(filtered).real              # performs inverse fft to retrieve function in "time-space". Note that the function is purely real!
+    
+    return smoothed
+
+
+def smooth_contour_points(points, n_keep, n_resample):
+    """
+    Smooth one contour of shape (n_points, 3), with non-uniform spacing:
+      1. Reparameterize by arc length
+      2. FFT smoothing on uniform grid
+      3. Optionally enforce closure
+
+    Parameters
+    points : ndarray
+        Shape (n_points, 3)
+    n_keep : int
+        Number of Fourier modes to keep.
+    n_resample : int
+        Number of points after arc-length resampling.
+    close_contour : bool
+        If True, treat contour as periodic and enforce start==end.
+
+    Returns
+    smoothed_points : ndarray
+        Shape (n_resample, 3)
+    """
+    # 1. Arc-length reparameterization (interpolate points of contour such that they have equal lengths)
+    s_uniform, points_uniform = reparameterize_by_arc_length(points, n_resample)
+
+    # 2. FFT smoothing for each coordinate
+    smoothed = np.empty_like(points_uniform, dtype=float)
+    for i in range(3):
+        smoothed[:, i] = smooth_1d_periodic(points_uniform[:, i], n_keep)
+
+    # 3. Enforce closure if needed
+    smoothed[-1] = smoothed[0]
+
+    return smoothed
+
+
+def smooth_all_contours_from_list(all_contours, n_keep, n_resample):
+    """
+    Smooth contours stored as a list-of-lists structure:
+
+        all_contours[face_idx][contour_idx] -> (n_points, 3) array
+
+    Returns a new list of lists with the same structure, but with smoothed
+    contours of shape (n_resample, 3).
+
+    Parameters
+    all_contours : list
+        List of length 6, each element is a list of contours for that face.
+    n_keep : int
+        Number of Fourier modes to keep.
+    n_resample : int
+        Number of points after arc-length resampling.
+    close_contour : bool
+        If True, treat contours as periodic.
+
+    Returns
+    smoothed_contours : list
+        Same structure as all_contours, but with smoothed arrays.
+    """
+    if not isinstance(all_contours, list) or len(all_contours) != 6:
+        raise ValueError("all_contours must be a list of length 6 (faces)")
+
+    smoothed_contours = []
+
+    for face_idx in range(6):
+        face_contours = all_contours[face_idx]
+        if not isinstance(face_contours, list):
+            raise ValueError(f"all_contours[{face_idx}] must be a list of contours")
+
+        smoothed_face = []
+        for contour_idx, points in enumerate(face_contours):
+            points = np.asarray(points)
+            if points.ndim != 2 or points.shape[1] != 3:
+                raise ValueError(f"Contour at face {face_idx}, contour {contour_idx} must be shape (n_points, 3), got {points.shape}")
+
+            smoothed = smooth_contour_points(points, n_keep, n_resample)
+            smoothed_face.append(smoothed)
+
+        smoothed_contours.append(smoothed_face)
+
+    return smoothed_contours
+
+def biot_savart_from_contours(contours, target_point_coord_exp, current_per_wire):
+    """
+    Compute magnetic field B at target points from contour wires using
+    discretized Biot-Savart law.
+
+    Parameters
+    contours : list
+        Nested list structure:
+            contours[face_idx][contour_idx] -> array of shape (n_points, 3)
+        Each contour is interpreted as a polyline wire.
+    target_point_coord_exp : ndarray
+        Shape (N_target, 3), observation points.
+    current_per_wire : float
+        Current flowing through each contour wire [A].
+
+    Returns
+    B : ndarray
+        Shape (N_target, 3), magnetic field at each target point [T].
+    """
+    target_point_coord_exp = np.asarray(target_point_coord_exp, dtype=float)
+    if target_point_coord_exp.ndim != 2 or target_point_coord_exp.shape[1] != 3:
+        raise ValueError("target_point_coord_exp must have shape (N_target, 3)")
+
+    B_total = np.zeros_like(target_point_coord_exp, dtype=float)
+
+    prefactor = mu_0 * current_per_wire / (4.0 * np.pi)
+
+    for face in contours:
+        for contour in face:
+            pts = np.asarray(contour, dtype=float)              # Make list to array
+            if pts.ndim != 2 or pts.shape[1] != 3:
+                raise ValueError("Each contour must have shape (n_points, 3)")
+            if len(pts) < 2:
+                continue
+
+            # If contour is closed, ensure last point connects back to first.
+            # Only add closing segment if not already closed.
+            if not np.allclose(pts[0], pts[-1]):
+                pts = np.vstack([pts, pts[0]])
+
+            r1 = pts[:-1]           # segment start points, shape (Nseg, 3)
+            r2 = pts[1:]            # segment end points, shape (Nseg, 3)
+            dl = r2 - r1            # segment vectors, shape (Nseg, 3)
+            mid = 0.5 * (r1 + r2)   # segment centers, shape (Nseg, 3)
+
+            # Vector from segment center to target points:
+            # R has shape (N_target, Nseg, 3)
+            R = target_point_coord_exp[:, None, :] - mid[None, :, :]    # R is the vector from the middle of the line segment to the target point
+            R_norm = np.linalg.norm(R, axis=2)                          # Norm over axis where coordinates are
+
+            # Cross product dl x R for each target and segment
+            dl_b = dl[None, :, :]       # shape (1, Nseg, 3)
+            cross = np.cross(dl_b, R)   # shape (N_target, Nseg, 3)
+            R_norm_cubed = R_norm**3    # Cubed norm, Note, that R_norm_cubed can not be zero, since the target points should not be on the coil planes
+            if np.any(R_norm_cubed) == 0:
+                raise ValueError("Target point for B-field lies on coil plane! -> Check setup!!!")
+
+            dB = prefactor * cross / R_norm_cubed[:, :, None]   # Biot Savart
+            B_total += np.sum(dB, axis=1)                       # Add up all contributions from different line segments to the B-field of one point
+
+    return B_total
+
+def plot_singular_values(C, normalize=True, log_scale=True):
+    C = np.asarray(C)
+
+    # Full SVD; singular values are sorted descending
+    s = np.linalg.svd(C, compute_uv=False)
+
+    if normalize:
+        s_plot = s / s[0]
+        ylabel = r"$\sigma_i / \sigma_{\max}$"
+    else:
+        s_plot = s
+        ylabel = r"$\sigma_i$"
+
+    idx = np.arange(len(s_plot))
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(idx, s_plot, lw=2)
+    plt.xlabel("Singular value index")
+    plt.ylabel(ylabel)
+    if log_scale:
+        plt.yscale("log")
+    plt.grid(True, which="major", ls="-", alpha=1)
+    plt.grid(True, which="minor", ls="--", alpha=0.5)
+    plt.title("Singular values of total coupling matrix")
+    plt.tight_layout()
+    plt.show()
+
+    return
+
+def interpolate_cartesian_grid(target_points, B_fields, n_points_longest):
+    """
+    Interpolate both coordinates and magnetic fields on a homogeneously spaced
+    Cartesian grid with n_points_longest along the longest dimension.
+    """
+    
+    # Step 1: Extract the grid structure from target_points
+    x_unique = np.unique(target_points[:, 0])
+    y_unique = np.unique(target_points[:, 1])
+    z_unique = np.unique(target_points[:, 2])
+    
+    nx, ny, nz = len(x_unique), len(y_unique), len(z_unique)
+    
+    print(f"Original grid: {nx} × {ny} × {nz} = {nx*ny*nz} points")
+    
+    # Step 2: Determine grid dimensions
+    x_range = x_unique.max() - x_unique.min()
+    y_range = y_unique.max() - y_unique.min()
+    z_range = z_unique.max() - z_unique.min()
+    
+    ranges = [x_range, y_range, z_range]
+    longest_idx = np.argmax(ranges)
+    longest_range = ranges[longest_idx]
+    
+    print(f"Grid ranges: X={x_range:.3f}, Y={y_range:.3f}, Z={z_range:.3f}")
+    
+    # Step 3: Calculate number of points for each dimension
+    spacing = longest_range / (n_points_longest - 1)
+    
+    nx_new = max(2, int(round(x_range / spacing + 1)))
+    ny_new = max(2, int(round(y_range / spacing + 1)))
+    nz_new = max(2, int(round(z_range / spacing + 1)))
+    
+    print(f"New grid: {nx_new} × {ny_new} × {nz_new} = {nx_new*ny_new*nz_new} points")
+    
+    # Step 4: Create new uniformly spaced grid coordinates
+    x_new = np.linspace(x_unique.min(), x_unique.max(), nx_new)
+    y_new = np.linspace(y_unique.min(), y_unique.max(), ny_new)
+    z_new = np.linspace(z_unique.min(), z_unique.max(), nz_new)
+    
+    # Step 5: Create 3D grid for original coordinates (for griddata)
+    X_orig, Y_orig, Z_orig = np.meshgrid(x_unique, y_unique, z_unique, indexing='ij')
+    
+    # Step 6: Stack original coordinates into (n_points, 3) format for griddata
+    points_orig = np.column_stack([X_orig.ravel(), Y_orig.ravel(), Z_orig.ravel()])
+    
+    # Step 7: Reshape B_fields into 3D array
+    B_x_3d = np.zeros((nx, ny, nz))
+    B_y_3d = np.zeros((nx, ny, nz))
+    B_z_3d = np.zeros((nx, ny, nz))
+    
+    for i in range(len(target_points)):
+        xi, yi, zi = target_points[i]
+        ix = np.where(x_unique == xi)[0][0]
+        iy = np.where(y_unique == yi)[0][0]
+        iz = np.where(z_unique == zi)[0][0]
+        B_x_3d[ix, iy, iz] = B_fields[i, 0]
+        B_y_3d[ix, iy, iz] = B_fields[i, 1]
+        B_z_3d[ix, iy, iz] = B_fields[i, 2]
+    
+    # Step 8: Create new 3D grid for interpolation output
+    X_new, Y_new, Z_new = np.meshgrid(x_new, y_new, z_new, indexing='ij')
+    points_new = np.column_stack([X_new.ravel(), Y_new.ravel(), Z_new.ravel()])
+    
+    # Step 9: Interpolate each B-field component (FIXED: pass points correctly)
+    B_x_interp = scipy.interpolate.griddata(points_orig, B_x_3d.ravel(), points_new, method='linear')
+    B_y_interp = scipy.interpolate.griddata(points_orig, B_y_3d.ravel(), points_new, method='linear')
+    B_z_interp = scipy.interpolate.griddata(points_orig, B_z_3d.ravel(), points_new, method='linear')
+    
+    # Step 10: Flatten and create output arrays
+    target_points_interp = points_new.copy()
+    
+    B_fields_interp = np.column_stack([
+        B_x_interp.ravel(),
+        B_y_interp.ravel(),
+        B_z_interp.ravel()
+    ])
+    
+    # Step 11: Remove NaN values (from extrapolation)
+    valid_mask = np.all(np.isfinite(B_fields_interp), axis=1)
+    target_points_interp = target_points_interp[valid_mask]
+    B_fields_interp = B_fields_interp[valid_mask]
+    
+    print(f"Final grid: {len(target_points_interp)} points (after removing NaN)")
+    
+    return target_points_interp, B_fields_interp
