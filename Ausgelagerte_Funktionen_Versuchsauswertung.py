@@ -412,8 +412,9 @@ def stitch_segments(segments, tol=1e-6):
 
 def find_all_contours(stream_func_coil, all_coords_verts, Steps, refinement_factor):
     # Reshape stream function for each plane (if needed for plotting or further analysis)
-    vertices_per_plane = int(len(stream_func_coil) / 6)  # All 6 planes in the coil layout have the same numbers of vertices by contruction
+    vertices_per_plane = int(len(stream_func_coil) / 6)  # All 6 planes in the coil layout have the same numbers of vertices by construction
     stream_func_each_plane = stream_func_coil.reshape(6, vertices_per_plane)
+
 
     # Get coordinates on surface
     coords = all_coords_verts.reshape(6, vertices_per_plane, 3)
@@ -421,14 +422,19 @@ def find_all_contours(stream_func_coil, all_coords_verts, Steps, refinement_fact
     y = coords[:, :, 1]
     z = coords[:, :, 2]
 
+
     # Create contour levels with desired spacing
     # The spacing value corresponds to the current in the wires, since the stream function is proportional to the current. Adjust this value to get more or fewer contour lines.
-    # contour_levels = np.arange(stream_func_coil.min(), stream_func_coil.max(), Spacing)  # Adjust spacing as needed
     contour_levels = np.linspace(stream_func_coil.min(), stream_func_coil.max(), Steps)
     print(f'There are {len(contour_levels)} global contour levels with a current of {(stream_func_coil.max()-stream_func_coil.min())/Steps} A in the stream function.')
     print('Note, that the more wires will lead to a closer approximation of the desired field, but also to a more complex coil layout and higher fabrication costs.')
 
+
     all_contours = []
+    # NEW: Boolean array to track if contour is above zero (True) or below zero (False)
+    # Shape will be (6 faces, number_of_contours_per_face) - matches all_contours structure
+    contour_is_positive = []
+    
     for face in range(6):
         print(f"\nProcessing plane {face + 1}/6...")
         
@@ -462,24 +468,26 @@ def find_all_contours(stream_func_coil, all_coords_verts, Steps, refinement_fact
             v = y_plane
             plane_offset = z_plane[0]
             coord_map = [0, 1, 2]               # [u_idx, v_idx, const_idx]
-        
             
+        
         ui_2d = np.linspace(u.min(), u.max(), refinement_factor)
         vi_2d = np.linspace(v.min(), v.max(), refinement_factor)
         ui_mesh, vi_mesh = np.meshgrid(ui_2d, vi_2d, indexing='ij')
 
+
         # Interpolate stream function onto 2D grid (linearly)
         stream_2d = scipy.interpolate.griddata((u, v), stream_plane,
-                     (ui_mesh, vi_mesh), method='linear')
+                         (ui_mesh, vi_mesh), method='linear')
         
         
         # Initialize contour list for this plane
         plane_contours = []
         
-        # For each contour level, extract the contour points -> Therefore the crossings of the contour level with each grid-cell-edge is computed.
-        # Since the contour is entering and leaving, everygridcell yield an array of two crossing points. Each crossing point must appear twice (once in each adjacent cell)!
-        # The array hoolding both crossing points is called segment!                                   
-        for level in contour_levels:          # Itersate through all contour levels and extract the contour points for each level
+        # NEW: Initialize boolean list for this plane
+        plane_contour_is_positive = []
+        
+        # For each contour level, extract the contour points
+        for level in contour_levels:          # Iterate through all contour levels and extract the contour points for each level
             # Skip if level is outside the valid range for this plane
             plane_min = stream_2d.min()
             plane_max = stream_2d.max()
@@ -488,14 +496,15 @@ def find_all_contours(stream_func_coil, all_coords_verts, Steps, refinement_fact
                 continue
             
             # Find contour point by marching through grid cells
-            level_segments_2d = []                                  # Holds a list of arrays, which contain the two crossing points of the contour of every cell in the 2D-plane
+            level_segments_2d = []                          # Holds a list of arrays, which contain the two crossing points of the contour of every cell in the 2D-plane
             for i in range(len(ui_2d) - 1):
                 for j in range(len(vi_2d) - 1):
                     # Get 4 corners of this cell
-                    s00 = stream_2d[i, j]                           # Value of interpolated stream function at the vertex {i, j}
-                    s10 = stream_2d[i+1, j]                         # Value of interpolated stream function at the vertex {i+1, j}
-                    s01 = stream_2d[i, j+1]                         # Value of interpolated stream function at the vertex {i, j+1}
-                    s11 = stream_2d[i+1, j+1]                       # Value of interpolated stream function at the vertex {i+1, j+1}
+                    s00 = stream_2d[i, j]                   # Value of interpolated stream function at the vertex {i, j}
+                    s10 = stream_2d[i+1, j]                 # Value of interpolated stream function at the vertex {i+1, j}
+                    s01 = stream_2d[i, j+1]                 # Value of interpolated stream function at the vertex {i, j+1}
+                    s11 = stream_2d[i+1, j+1]               # Value of interpolated stream function at the vertex {i+1, j+1}
+
 
                     # Skip if any value is NaN
                     if any(np.isnan(v) for v in [s00, s10, s01, s11]):
@@ -505,14 +514,14 @@ def find_all_contours(stream_func_coil, all_coords_verts, Steps, refinement_fact
                     diff = [s00 - level, s10 - level, s01 - level, s11 - level]
                     
                     # Check edges for crossings
-                    intersections = []                              # This array holds the two points, where the contour enters and leaves the cell. (Array of 2 2D-points)
+                    intersections = []                      # This array holds the two points, where the contour enters and leaves the cell. (Array of 2 2D-points)
                     
                     # Bottom edge (0-1)
-                    if diff[0] * diff[1] < 0:                       # If the difference between the current level and the streamfunction changes sign -> there is a crossing
-                        t = -diff[0] / (diff[1] - diff[0])          # linear interpolation to find the crossing point along the cell edge
+                    if diff[0] * diff[1] < 0:               # If the difference between the current level and the streamfunction changes sign -> there is a crossing
+                        t = -diff[0] / (diff[1] - diff[0])  # linear interpolation to find the crossing point along the cell edge
                         u_int = ui_2d[i] + t * (ui_2d[i+1] - ui_2d[i])
                         v_int = vi_2d[j]
-                        intersections.append((u_int, v_int))        # Append the crossing point to the list of intersections for this cell
+                        intersections.append((u_int, v_int))
                     
                     # Left edge (0-2)
                     if diff[0] * diff[2] < 0:
@@ -538,9 +547,9 @@ def find_all_contours(stream_func_coil, all_coords_verts, Steps, refinement_fact
                     # If we have 2 intersections (entering and exiting), we have a contour segment
                     if len(intersections) == 2:
                         level_segments_2d.append(np.array(intersections))
-                    
             
-            level_segments_3d = []                      # Initialise the 3D segment array. In this array the segment coordinates (2 2D-points) are transformed back to 3D coordinates by adding the offset
+            
+            level_segments_3d = []              # Initialise the 3D segment array. In this array the segment coordinates (2 2D-points) are transformed back to 3D coordinates by adding the offset
             for seg2d in level_segments_2d:
                 seg3d = np.zeros((2, 3))
                 seg3d[:, coord_map[0]] = seg2d[:, 0]
@@ -548,16 +557,24 @@ def find_all_contours(stream_func_coil, all_coords_verts, Steps, refinement_fact
                 seg3d[:, coord_map[2]] = plane_offset
                 level_segments_3d.append(seg3d)         # This array holds the segments in the order in which they were found. (small (u, v) -> large (u, v)) not in order
 
+
             if len(level_segments_3d) > 0:              # If the contour exists, stitch it together, such that all the 2 3D-point segments are connected. This also means getting rid of the second copy of each point!
                 stitched_level_contours = stitch_segments(level_segments_3d, tol=1e-8)
                 plane_contours.extend(stitched_level_contours)
-                # print(f'  Stitching...plane{face+1}: {len(stitched_level_contours[0])} segments')
+                
+                is_positive = level > 0
+                plane_contour_is_positive.extend([is_positive] * len(stitched_level_contours))
         
         # Add this plane's contours to the master list
         all_contours.append(plane_contours)             # This list contains the coordinates of all points, of all contours, of all faces.
+        
+        contour_is_positive.append(plane_contour_is_positive)
+        
         print(f"    Plane {face + 1}: extracted {len(plane_contours)} contours")
 
-    return all_contours
+
+    # Return both the contours and the boolean array
+    return all_contours, contour_is_positive
 
 def plot_contours(all_contours, stream_func_coil, total_coord, Steps):
     # plot the isolines of the streamfunction for each plane
@@ -960,3 +977,192 @@ def interpolate_cartesian_grid(target_points, B_fields, n_points_longest):
     print(f"Final grid: {len(target_points_interp)} points (after removing NaN)")
     
     return target_points_interp, B_fields_interp
+
+def point_in_contour_2d(point, contour_points):
+    """
+    Check if a 2D point is inside a polygon contour using ray-casting algorithm.
+    Also returns whether point is exactly on the contour edge.
+    """
+    x, y = point
+    n = len(contour_points)
+    inside = False
+    
+    # Convert to numpy array for easier indexing
+    contour_points = np.array(contour_points)
+    
+    # Check if point is on contour edge
+    on_contour = False
+    for i in range(n):
+        j = (i + 1) % n
+        x1, y1 = contour_points[i]
+        x2, y2 = contour_points[j]
+        
+        cross = (y - y1) * (x2 - x1) - (x - x1) * (y2 - y1)
+        if abs(cross) < 1e-10:
+            if min(x1, x2) <= x <= max(x1, x2) and min(y1, y2) <= y <= max(y1, y2):
+                on_contour = True
+                break
+    
+    if on_contour:
+        return False, True
+    
+    # Ray-casting algorithm
+    for i in range(n):
+        j = (i + 1) % n
+        x1, y1 = contour_points[i]
+        x2, y2 = contour_points[j]
+        
+        if ((y1 > y) != (y2 > y)):
+            x_intersect = (x2 - x1) * (y - y1) / (y2 - y1) + x1
+            
+            if x < x_intersect:
+                inside = not inside
+    
+    return inside, False
+
+
+def create_coil_stream_function(wire_positions, contour_is_positive, current, target_vertices):
+    """
+    DEBUG VERSION - with prints to trace the execution
+    """
+    n_vertices = len(target_vertices)
+    n_faces = 6
+    
+    # Initialize stream function array
+    stream_values = np.zeros(n_vertices)
+    
+    print(f"\n{'='*60}")
+    print(f"Starting create_coil_stream_function")
+    print(f"target_vertices shape: {target_vertices.shape}")
+    print(f"wire_positions has {len(wire_positions)} faces")
+    print(f"contour_is_positive has {len(contour_is_positive)} faces")
+    print(f"{'='*60}\n")
+    
+    # Track which vertices get non-zero values
+    vertices_with_values = np.zeros(n_vertices, dtype=int)
+    
+    # Process each face independently
+    for face_idx in range(n_faces):
+        print(f"\n{'='*60}")
+        print(f"PROCESSING FACE {face_idx + 1}")
+        print(f"{'='*60}")
+        
+        face_contours = wire_positions[face_idx]        # List of all Contours on a face (number_of_contours, number_of_points_in_one_contour, 3)
+        face_positive = contour_is_positive[face_idx]   # List of current sign of each Contour with length (number_of_contours)
+        n_contours = len(face_contours)
+        
+        print(f"  Number of contours on this face: {n_contours}")
+        
+        if n_contours == 0:
+            print(f"  >>> NO CONTOURS on this face, skipping")
+            continue
+        
+        print(f"  Contour booleans (current sign): {face_positive}")
+        
+        # Determine which axis is normal to this face
+        all_points_face = []
+        for contour in face_contours:
+            for pt in contour:
+                all_points_face.append(pt)
+        
+        all_points_face = np.array(all_points_face)
+        
+        variance = np.var(all_points_face, axis=0)      # If all points are on the same plane, one dimension will always be the same -> very small variance
+        normal_axis = np.argmin(variance)               # choose index with smallest variance
+        
+        const_coord = all_points_face[0, normal_axis]   # Determine constant offset of the plane by
+        
+        print(f"  Normal axis: {normal_axis} (x=0, y=1, z=2)")
+        print(f"  Constant coordinate value: {const_coord:.4f} m")
+        print(f"  Variance along axes: x={variance[0]:.1e}, y={variance[1]:.1e}, z={variance[2]:.1e}")
+        
+        # Extract 2D coordinates for this face
+        contour_2d = []
+        for contour in face_contours:
+            contour_2d_points = []
+            for pt in contour:
+                if normal_axis == 0:
+                    contour_2d_points.append([pt[1], pt[2]])
+                elif normal_axis == 1:
+                    contour_2d_points.append([pt[0], pt[2]])
+                elif normal_axis == 2:
+                    contour_2d_points.append([pt[0], pt[1]])
+            contour_2d.append(contour_2d_points)
+        
+        print(f"  2D contours extracted: {len(contour_2d)} which all have length {len(contour_2d[0])}")
+        
+        # Extract 2D coordinates for all target vertices accourding to the plane (all points are extracted!)
+        if normal_axis == 0:
+            vertex_2d = target_vertices[:, [1, 2]]
+        elif normal_axis == 1:
+            vertex_2d = target_vertices[:, [0, 2]]
+        elif normal_axis == 2:
+            vertex_2d = target_vertices[:, [0, 1]]
+        
+        # Check which vertices are on this face (within tolerance)
+        face_vertices_mask = np.abs(target_vertices[:, normal_axis] - const_coord) < 1e-6
+        face_vertices_count = np.sum(face_vertices_mask)
+        
+        print(f"\n  Vertices on this face: {face_vertices_count} out of {n_vertices}")
+        
+        # For each vertex on this face, check which contours enclose it
+        face_nonzero_count = 0
+        
+        for vert_idx in range(n_vertices):
+            if not face_vertices_mask[vert_idx]:
+                continue  # Skip vertices not on this face
+            
+            vertex_point = vertex_2d[vert_idx]
+            
+            positive_count = 0
+            negative_count = 0
+            on_contour = False
+            
+            for contour_idx in range(n_contours):
+                contour_points = contour_2d[contour_idx]
+                is_positive = face_positive[contour_idx]
+                
+                inside, on_edge = point_in_contour_2d(vertex_point, contour_points)
+                
+                if on_edge:
+                    on_contour = True
+                    break
+                elif inside:
+                    if is_positive:
+                        positive_count += 1
+                    else:
+                        negative_count += 1
+            
+            # Assign analytical value
+            if on_contour:
+                if positive_count == 0 and negative_count == 0:
+                    new_value = 0
+                else:
+                    if positive_count > 0:
+                        inner_value = current * positive_count
+                        outer_value = current * (positive_count - 1)
+                    else:
+                        inner_value = -current * negative_count
+                        outer_value = -current * (negative_count - 1)
+                    new_value = (inner_value + outer_value) / 2
+                    
+            elif not on_contour:
+                if positive_count > 0 and negative_count == 0:
+                    new_value = current * positive_count
+                elif negative_count > 0 and positive_count == 0:
+                    new_value = -current * negative_count
+                elif positive_count > 0 and negative_count > 0:
+                    new_value = current * (positive_count - negative_count)
+                else:
+                    new_value = 0
+            
+            stream_values[vert_idx] = new_value
+            
+            if new_value != 0:
+                face_nonzero_count += 1
+                vertices_with_values[vert_idx] += 1
+        
+        print(f"\n  Face {face_idx}: {face_nonzero_count} vertices got non-zero values")
+        print(f"{'='*60}\n")    
+    
+    return stream_values, vertices_with_values
