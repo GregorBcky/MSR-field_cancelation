@@ -388,6 +388,140 @@ class Coil_Layup():
         
         self.mesh_conductor = bfieldtools.mesh_conductor.MeshConductor(mesh_obj=self.total_planes, fix_normals=True)
         
+    def remove_support_holes(self, holes_left, holes_right, holes_front, holes_back, holes_top, hole_diameter, hole_removal):
+        """
+        Entfernt zylindrische Bohrungen (Aufhängepunkte) aus den Wandflächen
+        mesh_left, mesh_right, mesh_front, mesh_back und mesh_top, falls hole_removal == True.
+
+        holes_left/right/front/back/top: 2D-Arrays (N, 3) mit [x, y, z] der Bohrungszentren.
+        hole_diameter: Durchmesser der Bohrungen (in denselben Längeneinheiten wie das Mesh).
+        hole_removal: Boolean, ob die Bohrungen entfernt werden sollen.
+        """
+
+        if not hole_removal:
+            return
+
+        hole_radius = hole_diameter / 2.0
+
+        # Hilfsfunktion: für eine gegebene Wand und ein Array von Bohrungszentren
+        # die Faces innerhalb der Kreise entfernen und ein neues Trimesh zurückgeben.
+        def remove_holes_from_mesh(wall_mesh, holes, radius):
+            """
+            wall_mesh: Trimesh der Wand (z. B. mesh_left)
+            holes: (N, 3) Array mit [x, y, z] der Bohrungszentren
+            radius: Radius der Bohrungen
+            """
+            if holes.size == 0:
+                return wall_mesh
+
+            # Alle Faces, die wir initial behalten wollen
+            all_faces = wall_mesh.faces
+            all_verts = wall_mesh.vertices
+
+            keep_face_mask = np.ones(len(all_faces), dtype=bool)
+
+            # Für jede Bohrung: Faces markieren, die vollständig innerhalb des Kreisradius liegen
+            for i in range(holes.shape[0]):
+                cx, cy, cz = holes[i]
+
+                # Vorab-Filter: nur Faces, die in der Nähe der Bohrung liegen (Bounding Box)
+                # Das ist optional, aber hilft bei großen Meshen
+                face_verts = all_verts[all_faces]
+                # Minimal/Maximalkoordinaten jedes Face
+                x_min = face_verts[:, :, 0].min(axis=1)
+                x_max = face_verts[:, :, 0].max(axis=1)
+                y_min = face_verts[:, :, 1].min(axis=1)
+                y_max = face_verts[:, :, 1].max(axis=1)
+                z_min = face_verts[:, :, 2].min(axis=1)
+                z_max = face_verts[:, :, 2].max(axis=1)
+
+                # Bounding Box um die Bohrung:
+                bx_min = cx - radius
+                bx_max = cx + radius
+                by_min = cy - radius
+                by_max = cy + radius
+                bz_min = cz - radius
+                bz_max = cz + radius
+
+                candidate_mask = (
+                    (x_min <= bx_max) & (x_max >= bx_min) &
+                    (y_min <= by_max) & (y_max >= by_min) &
+                    (z_min <= bz_max) & (z_max >= bz_min)
+                )
+
+                for fi in np.where(candidate_mask)[0]:
+                    face = all_faces[fi]
+                    pts = all_verts[face]  # 3 vertices, shape (3, 3)
+
+                    # Abstand jedes Vertex zum Bohrungszentrum
+                    d = np.sqrt(
+                        (pts[:, 0] - cx) ** 2 +
+                        (pts[:, 1] - cy) ** 2 +
+                        (pts[:, 2] - cz) ** 2
+                    )
+
+                    # Wenn alle 3 vertices innerhalb des Radius sind: Face entfernen
+                    if np.any(d <= radius):
+                        keep_face_mask[fi] = False
+
+            # Nur die Faces behalten, die nicht entfernt wurden
+            keep_faces = all_faces[keep_face_mask]
+
+            if len(keep_faces) == 0:
+                # Wenn alles entfernt wurde, ggf. ein leerer Mesh zurückgeben
+                return trimesh.Trimesh(vertices=np.zeros((0, 3)), faces=np.zeros((0, 3), dtype=int), process=False)
+
+            # Vertex-Remapping (wie bei deiner Tür)
+            vertex_indices = np.unique(keep_faces.ravel())
+            vertex_map = {old_idx: new_idx for new_idx, old_idx in enumerate(vertex_indices)}
+            new_vertices = all_verts[vertex_indices]
+            new_faces = np.array([[vertex_map[v] for v in face] for face in keep_faces])
+
+            return trimesh.Trimesh(vertices=new_vertices, faces=new_faces, process=False)
+
+        # --- Linke Wand ---
+        if self.mesh_left is not None and holes_left.size > 0:
+            self.mesh_left = remove_holes_from_mesh(self.mesh_left, holes_left, hole_radius)
+
+        # --- Rechte Wand ---
+        if self.mesh_right is not None and holes_right.size > 0:
+            self.mesh_right = remove_holes_from_mesh(self.mesh_right, holes_right, hole_radius)
+
+        # --- Hintere Wand ---
+        if self.mesh_back is not None and holes_back.size > 0:
+            self.mesh_back = remove_holes_from_mesh(self.mesh_back, holes_back, hole_radius)
+
+        # --- Vordere Wand ---
+        if self.mesh_front is not None and holes_front.size > 0:
+            self.mesh_front = remove_holes_from_mesh(self.mesh_front, holes_front, hole_radius)
+
+        # --- Obere Wand ---
+        if self.mesh_top is not None and holes_top.size > 0:
+            self.mesh_top = remove_holes_from_mesh(self.mesh_top, holes_top, hole_radius)
+
+        # --- Zusammenbauen der neuen total_planes ---
+        self.total_planes = combine_meshes((
+            self.mesh_top, self.mesh_bottom,
+            self.mesh_front, self.mesh_back,
+            self.mesh_right, self.mesh_left
+        ))
+
+        # Optional: Vertex- und Face-Bereinigung (wie in deinem create_mesh)
+        # self.total_planes.merge_vertices(digits_vertex=6)
+        # self.total_planes.update_faces(self.total_planes.unique_faces())
+        # self.total_planes.remove_unreferenced_vertices()
+        # self.total_planes.fix_normals()
+
+        # Boundary-Kanten und MeshConductor wie bisher
+        self.coil_plane_boundaries = trimesh.grouping.group_rows(
+            self.total_planes.edges_sorted,
+            require_count=1
+        )
+
+        self.mesh_conductor = bfieldtools.mesh_conductor.MeshConductor(
+            mesh_obj=self.total_planes, fix_normals=True
+        )
+
     def stream_function_coils (self, current, n_windings):
 
         self.current = current
@@ -476,49 +610,55 @@ class Coil_Layup():
             assigned = False
 
             # x = const plane -> YZ coils
-            if np.any(np.isclose(self.total_planes.vertices[:, 0], x)):
+            if np.isclose(x, self.coil_plane_dist_to_origin_x, atol=tol) or np.isclose(x, -self.coil_plane_dist_to_origin_x, atol=tol):
                 for coil in range(2 * self.number_of_coils_y * self.number_of_coils_z):
-                    center_y, center_z = self.grid_yz[coil][1], self.grid_yz[coil][2]
+                    center_x, center_y, center_z = self.grid_yz[coil][0], self.grid_yz[coil][1], self.grid_yz[coil][2]
                     d_to_coil_center = (y - center_y)**2 + (z - center_z)**2
 
-                    if np.isclose(d_to_coil_center, r2, atol=tol, rtol=0.0):
-                        stream_function_on_vertices[v_idx] = sf_on_coil
-                        assigned = True
-                        break
-                    elif d_to_coil_center < r2:
-                        stream_function_on_vertices[v_idx] = sf_inside
-                        assigned = True
-                        break
-
-            # y = const plane -> XZ coils
-            elif np.any(np.isclose(self.total_planes.vertices[:, 1], y)):
+                    # Check if vertex is on the SAME side as the coil
+                    if np.isclose(x, center_x, atol=tol, rtol=0.01):  # Allow small tolerance
+                        if np.isclose(d_to_coil_center, r2, atol=tol, rtol=0.0):
+                            stream_function_on_vertices[v_idx] = sf_on_coil
+                            assigned = True
+                            break
+                        elif d_to_coil_center < r2:
+                            stream_function_on_vertices[v_idx] = sf_inside
+                            assigned = True
+                            break
+            
+            # y = const plane -> XZ coils  
+            elif np.isclose(y, self.coil_plane_dist_to_origin_y, atol=tol) or np.isclose(y, -self.coil_plane_dist_to_origin_y, atol=tol):
                 for coil in range(2 * self.number_of_coils_x * self.number_of_coils_z):
-                    center_x, center_z = self.grid_xz[coil][0], self.grid_xz[coil][2]
+                    center_x, center_y, center_z = self.grid_xz[coil][0], self.grid_xz[coil][1], self.grid_xz[coil][2]
                     d_to_coil_center = (x - center_x)**2 + (z - center_z)**2
-
-                    if np.isclose(d_to_coil_center, r2, atol=tol, rtol=0.0):
-                        stream_function_on_vertices[v_idx] = sf_on_coil
-                        assigned = True
-                        break
-                    elif d_to_coil_center < r2:
-                        stream_function_on_vertices[v_idx] = sf_inside
-                        assigned = True
-                        break
+                    
+                    # Check if vertex is on the SAME side as the coil
+                    if np.isclose(y, center_y, atol=tol, rtol=0.01):  # Allow small tolerance
+                        if np.isclose(d_to_coil_center, r2, atol=tol, rtol=0.0):
+                            stream_function_on_vertices[v_idx] = sf_on_coil
+                            assigned = True
+                            break
+                        elif d_to_coil_center < r2:
+                            stream_function_on_vertices[v_idx] = sf_inside
+                            assigned = True
+                            break
 
             # z = const plane -> XY coils
-            elif np.any(np.isclose(self.total_planes.vertices[:, 2], z)):
+            elif np.isclose(z, self.coil_plane_dist_to_origin_z, atol=tol) or np.isclose(z, -self.coil_plane_dist_to_origin_z, atol=tol):
                 for coil in range(2 * self.number_of_coils_x * self.number_of_coils_y):
-                    center_x, center_y = self.grid_xy[coil][0], self.grid_xy[coil][1]
+                    center_x, center_y, center_z = self.grid_xy[coil][0], self.grid_xy[coil][1], self.grid_xy[coil][2]
                     d_to_coil_center = (x - center_x)**2 + (y - center_y)**2
 
-                    if np.isclose(d_to_coil_center, r2, atol=tol, rtol=0.0):
-                        stream_function_on_vertices[v_idx] = sf_on_coil
-                        assigned = True
-                        break
-                    elif d_to_coil_center < r2:
-                        stream_function_on_vertices[v_idx] = sf_inside
-                        assigned = True
-                        break
+                    # Check if vertex is on the SAME side as the coil
+                    if np.isclose(z, center_z, atol=tol, rtol=0.01):  # Allow small tolerance
+                        if np.isclose(d_to_coil_center, r2, atol=tol, rtol=0.0):
+                            stream_function_on_vertices[v_idx] = sf_on_coil
+                            assigned = True
+                            break
+                        elif d_to_coil_center < r2:
+                            stream_function_on_vertices[v_idx] = sf_inside
+                            assigned = True
+                            break
 
             if not assigned:
                 stream_function_on_vertices[v_idx] = 0.0                                # Vertex is outside of all coils, assign analytical value of 0

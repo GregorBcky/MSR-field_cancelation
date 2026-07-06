@@ -646,6 +646,7 @@ def plot_contours(all_contours, stream_func_coil, total_coord, Steps):
         ax.set_aspect('equal')
 
     plt.tight_layout()
+    plt.savefig('Layup.pdf')
     plt.show()
 
     print(f'The current which needs to flow in every wire is {((stream_func_coil.max()-stream_func_coil.min())/Steps) * 10**3:.3f} mA.')
@@ -718,60 +719,90 @@ def smooth_1d_periodic(signal, n_keep):
     
     return smoothed
 
+def compute_n_keep(n_points, n_resample, alpha=0.2):
+    """
+    Berechne adaptive Anzahl der zu haltenden Fourier-Koeffizienten
+    basierend auf der ursprünglichen Punkteinzahl n_points.
 
-def smooth_contour_points(points, n_keep, n_resample):
+    alpha: Faktor, wie viel Prozent der Punkte als Frequenzen erlaubt sind.
+           Typisch 0.1–0.3.
+    """
+    if n_points <= 0:
+        return 1
+
+    base = int(alpha * n_points)
+    n_keep = max(1, base)
+
+    # Obere Grenze: maximal N/2 für die resampled Signale
+    n_keep = min(n_keep, n_resample // 2)
+
+    return n_keep
+
+def smooth_contour_points(points, n_keep, n_resample, alpha):
     """
     Smooth one contour of shape (n_points, 3), with non-uniform spacing:
       1. Reparameterize by arc length
-      2. FFT smoothing on uniform grid
-      3. Optionally enforce closure
+      2. FFT smoothing auf uniformer Gitter
+      3. Optional closure
 
     Parameters
     points : ndarray
         Shape (n_points, 3)
-    n_keep : int
+    n_keep : int or None
         Number of Fourier modes to keep.
+        Wenn None, dann wird n_keep automatisch aus n_points und alpha berechnet.
     n_resample : int
         Number of points after arc-length resampling.
-    close_contour : bool
-        If True, treat contour as periodic and enforce start==end.
+    alpha : float
+        Faktor für adaptive n_keep (nur relevant, wenn n_keep=None).
 
     Returns
     smoothed_points : ndarray
         Shape (n_resample, 3)
     """
-    # 1. Arc-length reparameterization (interpolate points of contour such that they have equal lengths)
+    points = np.asarray(points)
+    if points.ndim != 2 or points.shape[1] != 3:
+        raise ValueError("points must have shape (n_points, 3)")
+
+    n_points = points.shape[0]
+
+    # Adaptive n_keep, wenn nicht fest vorgegeben
+    if n_keep is None:
+        n_keep = compute_n_keep(n_points, n_resample, alpha=alpha)
+
+    # 1. Arc-length reparameterization
     s_uniform, points_uniform = reparameterize_by_arc_length(points, n_resample)
 
-    # 2. FFT smoothing for each coordinate
+    # 2. FFT smoothing für jede Koordinate
     smoothed = np.empty_like(points_uniform, dtype=float)
     for i in range(3):
         smoothed[:, i] = smooth_1d_periodic(points_uniform[:, i], n_keep)
 
-    # 3. Enforce closure if needed
+    # 3. Enforce closure
     smoothed[-1] = smoothed[0]
 
     return smoothed
 
 
-def smooth_all_contours_from_list(all_contours, n_keep, n_resample):
+def smooth_all_contours_from_list(all_contours, n_keep, n_resample, alpha):
     """
     Smooth contours stored as a list-of-lists structure:
 
         all_contours[face_idx][contour_idx] -> (n_points, 3) array
 
-    Returns a new list of lists with the same structure, but with smoothed
+    Returns a new list of lists mit dem gleichen Struktur, aber mit smoothed
     contours of shape (n_resample, 3).
 
     Parameters
     all_contours : list
         List of length 6, each element is a list of contours for that face.
-    n_keep : int
+    n_keep : int or None
         Number of Fourier modes to keep.
+        Wenn None, wird n_keep automatisch aus n_points und alpha berechnet.
     n_resample : int
         Number of points after arc-length resampling.
-    close_contour : bool
-        If True, treat contours as periodic.
+    alpha : float
+        Faktor für adaptive n_keep (nur relevant, wenn n_keep=None).
 
     Returns
     smoothed_contours : list
@@ -793,7 +824,7 @@ def smooth_all_contours_from_list(all_contours, n_keep, n_resample):
             if points.ndim != 2 or points.shape[1] != 3:
                 raise ValueError(f"Contour at face {face_idx}, contour {contour_idx} must be shape (n_points, 3), got {points.shape}")
 
-            smoothed = smooth_contour_points(points, n_keep, n_resample)
+            smoothed = smooth_contour_points(points, n_keep, n_resample, alpha=alpha)
             smoothed_face.append(smoothed)
 
         smoothed_contours.append(smoothed_face)
