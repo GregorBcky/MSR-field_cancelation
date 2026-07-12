@@ -17,7 +17,7 @@ import traceback
 from collections import defaultdict
 
 import adsk.core
-import adsk.fusion
+# import adsk.fusion
 
 # Initialize the global variables for the Application and UserInterface objects.
 app = adsk.core.Application.get()
@@ -152,7 +152,7 @@ def main():
             ui.messageBox(f"[skip] Unknown plane suffix '{plane_key}' for group '{prefix}'")
             continue
 
-        ui.messageBox(f"\n=== Face group: {prefix}  (plane: {plane_name}) ===")
+        # ui.messageBox(f"\n=== Face group: {prefix}  (plane: {plane_name}) ===")
 
         # 2. BaseFace für die Ebene holen
         base_face = get_base_face(design, plane_name)
@@ -166,7 +166,6 @@ def main():
 
         # 4. Für jede Datei: Punkte lesen und Spline erstellen
         for file_path in files:
-            ui.messageBox(f"  Importing: {file_path}")
 
             points_3d = []
             try:
