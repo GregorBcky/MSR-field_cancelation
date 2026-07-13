@@ -1193,7 +1193,7 @@ def create_coil_stream_function(wire_positions, contour_is_positive, current, ta
                 face_nonzero_count += 1
                 vertices_with_values[vert_idx] += 1
         
-        print(f"\n  Face {face_idx}: {face_nonzero_count} vertices got non-zero values")
+        print(f"\n  Face {face_idx+1}: {face_nonzero_count} vertices got non-zero values")
         print(f"{'='*60}\n")    
     
     return stream_values, vertices_with_values
