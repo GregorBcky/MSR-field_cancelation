@@ -39,10 +39,9 @@ def load_data_from_folder(folder_path_no_current, folder_path_with_current, L_x,
 
     # Stack all files into final (total_Npoints, 3) arrays
     target_point_coord = np.vstack(target_point_coord)                          # (total_Npoints, 3)
-    B_target_point_no_current = np.vstack(B_target_point_no_current)              # (total_Npoints, 3)
+    B_target_point_no_current = np.vstack(B_target_point_no_current)            # (total_Npoints, 3)
 
-    i=0
-    for filename in os.listdir(folder_path_with_current):                # iterates through all documents in the points folder
+    for filename in os.listdir(folder_path_with_current):                       # iterates through all documents in the points folder
         if filename.endswith(".npz"):                                           # only load the .npz files
             file_path = os.path.join(folder_path_with_current, filename)
             data = np.load(file_path)                                           # load the data of the current point
@@ -725,7 +724,7 @@ def compute_n_keep(n_points, n_resample, alpha=0.2):
     basierend auf der ursprünglichen Punkteinzahl n_points.
 
     alpha: Faktor, wie viel Prozent der Punkte als Frequenzen erlaubt sind.
-           Typisch 0.1–0.3.
+           Typisch 0.1 bis 0.3.
     """
     if n_points <= 0:
         return 1
