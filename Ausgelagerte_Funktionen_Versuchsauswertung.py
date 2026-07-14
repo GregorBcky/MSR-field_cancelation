@@ -1196,3 +1196,316 @@ def create_coil_stream_function(wire_positions, contour_is_positive, current, ta
         print(f"{'='*60}\n")    
     
     return stream_values, vertices_with_values
+
+# ================================
+# Discretising to Experiment setup
+# ================================
+
+def face_to_2d_from_data(contour_3d, face_axes):
+    """
+    Convert 3D contour (N,3) to 2D (N,2) using dynamic face_axes.
+    face_axes[face_idx] = (i, j, const_axis) where:
+      - i, j: indices of the two varying dimensions (2D coordinates)
+      - const_axis: index of the constant dimension
+    """
+    i, j, _ = face_axes
+    return contour_3d[:, (i, j)]
+
+
+def infer_face_axes_from_contours(contours_face):
+    """
+    Infer (i, j, const_axis) for a face from its 3D contours.
+    contours_face: list of (N, 3) arrays.
+    Returns (i, j, const_axis) where const_axis is the axis with minimal variance.
+    """
+    pts_all = np.vstack(contours_face)  # (N_total, 3)
+    variances = np.var(pts_all, axis=0)
+    const_axis = np.argmin(variances)
+
+    # The two varying axes are the other two
+    varying_axes = [a for a in range(3) if a != const_axis]
+    i, j = varying_axes[0], varying_axes[1]
+
+    return i, j, const_axis
+
+
+def face_bbox(contours_2d):
+    """
+    Compute bounding box (x_min, x_max, y_min, y_max) for a list of 2D contours.
+    """
+    pts = np.vstack(contours_2d)
+    x_min, y_min = pts.min(axis=0)
+    x_max, y_max = pts.max(axis=0)
+    return x_min, x_max, y_min, y_max
+
+
+def make_square_grid_by_spacing(x_min, x_max, y_min, y_max, spacing):
+    if spacing <= 0:
+        raise ValueError("spacing must be positive")
+
+    nx_intervals = max(int(np.floor((x_max - x_min) / spacing)), 1)
+    ny_intervals = max(int(np.floor((y_max - y_min) / spacing)), 1)
+
+    kx = nx_intervals + 1
+    ky = ny_intervals + 1
+
+    x = np.linspace(x_min, x_max, kx)
+    y = np.linspace(y_min, y_max, ky)
+
+    xv, yv = np.meshgrid(x, y, indexing='ij')
+    grid_pts = np.stack([xv, yv], axis=-1).reshape(-1, 2)
+
+    return grid_pts, x, y
+
+
+def remove_consecutive_duplicates(indices):
+    """
+    Remove consecutive duplicate indices from a 1D array.
+    """
+    if len(indices) == 0:
+        return indices
+    cleaned = [indices[0]]
+    for i in indices[1:]:
+        if i != cleaned[-1]:
+            cleaned.append(i)
+    return np.array(cleaned)
+
+
+def get_face_constant_value_from_axes(pts_all, const_axis):
+    """
+    Given pts_all (N,3) and const_axis (0,1,2), return the constant value.
+    """
+    return pts_all[:, const_axis].mean()
+
+
+def grid_2d_to_3d_dynamic(grid_pts_2d, face_axes, const_value):
+    """
+    Convert 2D grid (K,2) to 3D grid (K,3) using dynamic face_axes.
+    face_axes = (i, j, const_axis).
+    const_value: the actual constant coordinate value along const_axis.
+    """
+    i, j, const_axis = face_axes
+    n = grid_pts_2d.shape[0]
+
+    # Initialize 3D array
+    grid_3d = np.empty((n, 3), dtype=grid_pts_2d.dtype)
+
+    # Fill varying dimensions from 2D
+    grid_3d[:, i] = grid_pts_2d[:, 0]
+    grid_3d[:, j] = grid_pts_2d[:, 1]
+
+    # Fill constant dimension
+    grid_3d[:, const_axis] = const_value
+
+    return grid_3d
+
+
+def approximate_contour_nearest(contour_2d, grid_pts):
+    tree = scipy.spatial.cKDTree(grid_pts)
+    _, indices = tree.query(contour_2d, k=1)
+    return indices
+
+
+def process_face(contours_face, face_axes, spacing):
+    """
+    Process a single face:
+    - convert to 2D using dynamic face_axes
+    - compute bbox
+    - create grid
+    - approximate each contour to grid indices
+    - return 2D grid, coords, and list of cleaned index arrays
+    """
+    contours_2d = [face_to_2d_from_data(c, face_axes) for c in contours_face]
+    x_min, x_max, y_min, y_max = face_bbox(contours_2d)
+
+    grid_pts, x_coord, y_coord = make_square_grid_by_spacing(
+        x_min, x_max, y_min, y_max, spacing
+    )
+
+    approx_indices = []
+    for c2d in contours_2d:
+        indices = approximate_contour_nearest(c2d, grid_pts)
+        cleaned = remove_consecutive_duplicates(indices)
+        approx_indices.append(cleaned)
+
+    return grid_pts, x_coord, y_coord, approx_indices
+
+
+def build_reconstructed_contours_dynamic(smoothed_contours, spacing=0.06):
+    """
+    From smoothed_contours (list of 6 faces, each face: list of 3D contours),
+    build reconstructed_contours with 3D grid-approximated contours.
+    smoothed_contours[face_idx] is list of (N,3) arrays.
+
+    face_axes[face_idx] = (i, j, const_axis) is inferred from the data.
+    """
+    all_face_results = []
+
+    # Infer face_axes for each face from the data
+    face_axes_list = []
+    for contours_face in smoothed_contours:
+        face_axes = infer_face_axes_from_contours(contours_face)
+        face_axes_list.append(face_axes)
+
+    for face_idx, contours_face in enumerate(smoothed_contours):
+        face_axes = face_axes_list[face_idx]
+
+        grid_pts_2d, x_coord, y_coord, approx_contours = process_face(
+            contours_face, face_axes, spacing
+        )
+
+        pts_all = np.vstack(contours_face)
+        const_axis = face_axes[2]
+        const_value = get_face_constant_value_from_axes(pts_all, const_axis)
+
+        all_face_results.append({
+            "face_idx": face_idx,
+            "face_axes": face_axes,
+            "grid_pts_2d": grid_pts_2d,
+            "x": x_coord,
+            "y": y_coord,
+            "approx_contours": approx_contours,
+            "const_axis": const_axis,
+            "const_value": const_value,
+        })
+
+    # Convert 2D grids to 3D using dynamic mapping
+    for entry in all_face_results:
+        grid_3d = grid_2d_to_3d_dynamic(
+            grid_pts_2d=entry["grid_pts_2d"],
+            face_axes=entry["face_axes"],
+            const_value=entry["const_value"],
+        )
+        entry["grid_pts_3d"] = grid_3d
+
+    # Build reconstructed_contours: list of faces, each face: list of (N,3) contours
+    reconstructed_contours = []
+    for entry in all_face_results:
+        grid_pts_3d = entry["grid_pts_3d"]
+        approx_contours = entry["approx_contours"]
+
+        face_contours = [grid_pts_3d[idxs] for idxs in approx_contours]
+        reconstructed_contours.append(face_contours)
+
+    return reconstructed_contours
+
+
+def count_turn_points(reconstructed_contours, tol=1e-12):
+    tot_points = 0
+    tot_turns = 0
+
+    for face_contours in reconstructed_contours:
+        for pts in face_contours:
+            N = len(pts)
+            if N < 3:
+                tot_points += N
+                continue
+
+            tot_points += N
+
+            for i in range(N):
+                prev_i = (i - 1) % N
+                next_i = (i + 1) % N
+
+                v_in = pts[i] - pts[prev_i]
+                v_out = pts[next_i] - pts[i]
+
+                if np.linalg.norm(v_in) < tol or np.linalg.norm(v_out) < tol:
+                    continue
+
+                cross = np.cross(v_in, v_out)
+                if np.linalg.norm(cross) > tol:
+                    tot_turns += 1
+
+    return tot_turns, tot_points
+
+
+def plot_contours_per_line_dynamic(all_contours, stream_func_coil, total_coord, Steps,
+                                   output_dir="single_contour_plots"):
+    """
+    Plot each contour individually as a PDF.
+    Uses the structure of all_contours[face_idx][contour_idx] as (N,3).
+    The projection (which 2D plane to use) is re-inferred from the data per face.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    face_titles = [
+        "Face 1: xy-plane",
+        "Face 2: xy-plane",
+        "Face 3: xz-plane",
+        "Face 4: xz-plane",
+        "Face 5: yz-plane",
+        "Face 6: yz-plane"
+    ]
+
+    vertices_per_plane = int(len(stream_func_coil) / 6)
+    stream_func_each_plane = stream_func_coil.reshape(6, vertices_per_plane)
+    coords = total_coord.reshape(6, vertices_per_plane, 3)
+
+    x = coords[:, :, 0]
+    y = coords[:, :, 1]
+    z = coords[:, :, 2]
+
+    for face_idx in range(6):
+        contours_face = all_contours[face_idx]
+
+        # Infer projection from data (same logic as infer_face_axes_from_contours)
+        if len(contours_face) == 0:
+            # No contours for this face: skip
+            continue
+
+        pts_all = np.vstack(contours_face)
+        variances = np.var(pts_all, axis=0)
+        const_dim = np.argmin(variances)
+
+        x_face = x[face_idx]
+        y_face = y[face_idx]
+        z_face = z[face_idx]
+        scalar_face = stream_func_each_plane[face_idx]
+
+        x_range = x_face.max() - x_face.min()
+        y_range = y_face.max() - y_face.min()
+        z_range = z_face.max() - z_face.min()
+
+        # Use the same const_dim from data for plotting
+        if const_dim == 0:  # yz-plane
+            u_face, v_face = y_face, z_face
+        elif const_dim == 1:  # xz-plane
+            u_face, v_face = x_face, z_face
+        else:  # xy-plane
+            u_face, v_face = x_face, y_face
+
+        triang = mtri.Triangulation(u_face, v_face)
+
+        for contour_idx, contour in enumerate(contours_face):
+            fig, ax = plt.subplots()
+
+            ax.tricontourf(triang, scalar_face, levels=30, cmap='viridis', alpha=0.75)
+
+            if const_dim == 0:
+                ax.plot(contour[:, 1], contour[:, 2], 'b-', linewidth=1.5)
+            elif const_dim == 1:
+                ax.plot(contour[:, 0], contour[:, 2], 'b-', linewidth=1.5)
+            else:
+                ax.plot(contour[:, 0], contour[:, 1], 'b-', linewidth=1.5)
+
+            ax.set_title(f"{face_titles[face_idx]} - Contour {contour_idx}", fontsize=12)
+            ax.axis('equal')
+
+            if const_dim == 0:
+                ax.set_xlabel('y [m]')
+                ax.set_ylabel('z [m]')
+            elif const_dim == 1:
+                ax.set_xlabel('x [m]')
+                ax.set_ylabel('z [m]')
+            else:
+                ax.set_xlabel('x [m]')
+                ax.set_ylabel('y [m]')
+
+            ax.grid(True, alpha=0.3)
+            ax.set_aspect('equal')
+
+            pdf_name = f"face{face_idx}_contour{contour_idx}.pdf"
+            pdf_path = os.path.join(output_dir, pdf_name)
+            fig.savefig(pdf_path, format='pdf', bbox_inches='tight')
+            plt.close(fig)
