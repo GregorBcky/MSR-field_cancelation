@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
 import scipy
 import os
+import glob
 
 mu_0=scipy.constants.mu_0
 pi=scipy.constants.pi
@@ -1429,6 +1430,10 @@ def plot_contours_per_line_dynamic(all_contours, stream_func_coil, total_coord, 
     """
     os.makedirs(output_dir, exist_ok=True)
 
+    # Clear all existing PDFs in the output directory before creating new ones
+    for f in glob.glob(os.path.join(output_dir, "*.pdf")):
+        os.remove(f)
+
     face_titles = [
         "Face 1: xy-plane",
         "Face 2: xy-plane",
@@ -1509,3 +1514,94 @@ def plot_contours_per_line_dynamic(all_contours, stream_func_coil, total_coord, 
             pdf_path = os.path.join(output_dir, pdf_name)
             fig.savefig(pdf_path, format='pdf', bbox_inches='tight')
             plt.close(fig)
+
+def optimize_alpha_global(B_meas, C_tot, psi):
+    """
+    Optimize the scaling parameter alpha to minimize the quadratic error.
+    
+    Solves: min_alpha ||B_meas - alpha * (C_tot * psi)||_2^2
+    
+    Parameters
+    ----------
+    B_meas : ndarray
+        Measured magnetic field values (can be real or complex)
+    C_tot : ndarray
+        Total coil response function (can be real or complex)
+    psi : ndarray
+        Stream function values at mesh vertices
+    
+    Returns
+    -------
+    alpha : float or complex
+        Optimal scaling parameter that minimizes the L2 error
+    error : float
+        The minimized quadratic error (L2 norm squared)
+    """
+    
+    # Calculate the target field pattern from coil response and stream function
+    target = C_tot @ psi
+    
+    # Analytical least-squares solution
+    # alpha = sum(target* . B_meas) / sum(|target|^2)
+    alpha = np.sum(np.conj(target) * B_meas) / np.sum(np.conj(target) * target)
+    
+    # Calculate the residual error
+    residual = B_meas - alpha * target
+    error = np.sum(np.abs(residual)**2)
+    
+    return alpha, error
+
+def optimize_alpha_vector(B_meas, C_tot, psi_faces):
+    """
+    Optimize the scaling parameters alpha for each face individually.
+    
+    Solves: min_alpha ||B_meas - C_tot @ (sum_i alpha_i * psi_i)||_2^2
+    
+    Parameters
+    ----------
+    B_meas : ndarray, shape (n_points,)
+        Measured magnetic field values (can be real or complex)
+    C_tot : ndarray, shape (n_points, n_vertices)
+        Coupling matrix from vertices to measurement points
+    psi_faces : ndarray, shape (n_faces, n_vertices_per_face)
+        Stream function values for each face
+        Each row psi_faces[i] contains psi values for face i
+        The total stream function has n_vertices = n_faces * n_vertices_per_face
+    
+    Returns
+    -------
+    alpha : ndarray, shape (n_faces,)
+        Optimal scaling parameter for each face
+    error : float
+        The minimized quadratic error (L2 norm squared)
+    """
+    
+    n_faces = psi_faces.shape[0]
+    n_points = B_meas.shape[0]
+    n_vertices_per_face = psi_faces.shape[1]
+    n_vertices = n_faces * n_vertices_per_face
+    
+    # Build the design matrix A
+    # Each column i contains: C_tot @ psi_i (full stream function with only face i non-zero)
+    # A has shape (n_points, n_faces)
+    A = np.zeros((n_points, n_faces))
+    
+    for i in range(n_faces):
+        # Create full stream function vector with zeros except for face i
+        psi_full = np.zeros(n_vertices)
+        start_idx = i * n_vertices_per_face
+        end_idx = (i + 1) * n_vertices_per_face
+        psi_full[start_idx:end_idx] = psi_faces[i]
+        
+        # Multiply by coupling matrix: (n_points, n_vertices) @ (n_vertices,) = (n_points,)
+        A[:, i] = C_tot @ psi_full
+    
+    # Solve the linear least squares problem
+    alpha, residuals, rank, s = np.linalg.lstsq(A, B_meas, rcond=None)
+    
+    # Calculate the residual error
+    predicted = A @ alpha
+    residual = B_meas - predicted
+    error = np.sum(np.abs(residual)**2)
+    
+    return alpha, error
