@@ -18,7 +18,7 @@ def load_data_from_folder(folder_path_no_current, folder_path_with_current, L_x,
     B_target_point_no_current = []
     B_target_point_with_current = []
 
-    for filename in os.listdir(folder_path_no_current):                  # iterates through all documents in the points folder
+    for filename in os.listdir(folder_path_no_current):                         # iterates through all documents in the points folder
         if filename.endswith(".npz"):                                           # only load the .npz files
             file_path = os.path.join(folder_path_no_current, filename)
             data = np.load(file_path)                                           # load the data of the current point
@@ -182,12 +182,12 @@ def plot_stream_function(vertices, stream_function):
 
     v_min = min(stream_function)
     v_max = max(stream_function)
-    c_map = 'RdBu_r'                # Rot-Blau Colormap (symmetrisch)
-    s=40                            # Punktgröße
-    alpha=0.8                       # Transparenz der Punkte
+    c_map = 'RdBu_r'                # red-blue Colormap (symmetric)
+    s=40                            # point size
+    alpha=0.8                       # transparency of points
 
     fig_3d = plt.figure(figsize=(12, 10))
-    ax_3d = fig_3d.add_subplot(111, projection='3d')  # Fix: fig_3d statt fig
+    ax_3d = fig_3d.add_subplot(111, projection='3d')
 
     scatter_3d = ax_3d.scatter(
         vertices[:, 0], vertices[:, 1], vertices[:, 2],
@@ -195,12 +195,12 @@ def plot_stream_function(vertices, stream_function):
     )
 
     cbar_3d = plt.colorbar(scatter_3d, shrink=0.6, pad=0.1)
-    cbar_3d.set_label(r'Stromfunktion $\psi$', fontsize=14, rotation=270, labelpad=20)
+    cbar_3d.set_label(r'Stream Sunction $\psi$', fontsize=14, rotation=270, labelpad=20)
 
     ax_3d.set_xlabel('X [m]', fontsize=12)
     ax_3d.set_ylabel('Y [m]', fontsize=12)
     ax_3d.set_zlabel('Z [m]', fontsize=12)
-    ax_3d.set_title('Stromfunktion auf Coil-Oberfläche', fontsize=16, pad=20)
+    ax_3d.set_title('Stream Function on Coil-Surface', fontsize=16, pad=20)
 
     ax_3d.set_xlim(vertices[:,0].min()*1.05, vertices[:,0].max()*1.05)
     ax_3d.set_ylim(vertices[:,1].min()*1.05, vertices[:,1].max()*1.05)
@@ -218,7 +218,7 @@ def plot_stream_function(vertices, stream_function):
     scatter1 = ax1.scatter(
         vertices[:N, 0],
         vertices[:N, 1],
-        c = stream_function[:N],     # Farbe nach Streamfunktion
+        c = stream_function[:N],     # Colour of stream function
         cmap = c_map,
         s = s,                
         vmin = v_min,
@@ -227,7 +227,7 @@ def plot_stream_function(vertices, stream_function):
         edgecolors = 'none'
     )
     cbar1 = plt.colorbar(scatter1, shrink=0.6, pad=0.1)
-    cbar1.set_label(r'Stromfunktion $\psi$', fontsize=14, rotation=270, labelpad=20)
+    cbar1.set_label(r'Stream Function $\psi$', fontsize=14, rotation=270, labelpad=20)
     ax1.set_aspect('equal', adjustable='box')
     ax1.set_title('Top')
 
@@ -235,7 +235,7 @@ def plot_stream_function(vertices, stream_function):
     scatter2 = ax2.scatter(
         vertices[N:2*N, 0],
         vertices[N:2*N, 1],
-        c = stream_function[N:2*N],     # Farbe nach Streamfunktion
+        c = stream_function[N:2*N],
         cmap = c_map,
         s = s,                
         vmin = v_min,
@@ -244,7 +244,7 @@ def plot_stream_function(vertices, stream_function):
         edgecolors = 'none'
     )
     cbar2 = plt.colorbar(scatter2, shrink=0.6, pad=0.1)
-    cbar2.set_label(r'Stromfunktion $\psi$', fontsize=14, rotation=270, labelpad=20)
+    cbar2.set_label(r'Stream Function $\psi$', fontsize=14, rotation=270, labelpad=20)
     ax2.set_aspect('equal', adjustable='box')
     ax2.set_title('Bottom')
 
@@ -252,7 +252,7 @@ def plot_stream_function(vertices, stream_function):
     scatter3 = ax3.scatter(
         vertices[2*N:3*N, 0],
         vertices[2*N:3*N, 2],
-        c = stream_function[2*N:3*N],     # Farbe nach Streamfunktion
+        c = stream_function[2*N:3*N],
         cmap = c_map,
         s = s,                
         vmin = v_min,
@@ -261,7 +261,7 @@ def plot_stream_function(vertices, stream_function):
         edgecolors = 'none'
     )
     cbar3 = plt.colorbar(scatter3, shrink=0.6, pad=0.1)
-    cbar3.set_label(r'Stromfunktion $\psi$', fontsize=14, rotation=270, labelpad=20)
+    cbar3.set_label(r'Stream Function $\psi$', fontsize=14, rotation=270, labelpad=20)
     ax3.set_aspect('equal', adjustable='box')
     ax3.set_title('Back')
 
@@ -269,7 +269,7 @@ def plot_stream_function(vertices, stream_function):
     scatter4 = ax4.scatter(
         vertices[3*N:4*N, 0],
         vertices[3*N:4*N, 2],
-        c = stream_function[3*N:4*N],     # Farbe nach Streamfunktion
+        c = stream_function[3*N:4*N],
         cmap = c_map,
         s = s,                
         vmin = v_min,
@@ -278,7 +278,7 @@ def plot_stream_function(vertices, stream_function):
         edgecolors = 'none'
     )
     cbar4 = plt.colorbar(scatter4, shrink=0.6, pad=0.1)
-    cbar4.set_label(r'Stromfunktion $\psi$', fontsize=14, rotation=270, labelpad=20)
+    cbar4.set_label(r'Stream Function $\psi$', fontsize=14, rotation=270, labelpad=20)
     ax4.set_aspect('equal', adjustable='box')
     ax4.set_title('Front')
 
@@ -287,7 +287,7 @@ def plot_stream_function(vertices, stream_function):
     scatter5 = ax5.scatter(
         vertices[4*N:5*N, 1],
         vertices[4*N:5*N, 2],
-        c = stream_function[4*N:5*N],     # Farbe nach Streamfunktion
+        c = stream_function[4*N:5*N],
         cmap = c_map,
         s = s,                
         vmin = v_min,
@@ -296,7 +296,7 @@ def plot_stream_function(vertices, stream_function):
         edgecolors = 'none'
     )
     cbar5 = plt.colorbar(scatter5, shrink=0.6, pad=0.1)
-    cbar5.set_label(r'Stromfunktion $\psi$', fontsize=14, rotation=270, labelpad=20)
+    cbar5.set_label(r'Stream Function $\psi$', fontsize=14, rotation=270, labelpad=20)
     ax5.set_aspect('equal', adjustable='box')
     ax5.set_title('right')
 
@@ -304,7 +304,7 @@ def plot_stream_function(vertices, stream_function):
     scatter6 = ax6.scatter(
         vertices[5*N:6*N, 1],
         vertices[5*N:6*N, 2],
-        c = stream_function[5*N:6*N],     # Farbe nach Streamfunktion
+        c = stream_function[5*N:6*N],
         cmap = c_map,
         s = s,                
         vmin = v_min,
@@ -313,7 +313,7 @@ def plot_stream_function(vertices, stream_function):
         edgecolors = 'none'
     )
     cbar6 = plt.colorbar(scatter6, shrink=0.6, pad=0.1)
-    cbar6.set_label(r'Stromfunktion $\psi$', fontsize=14, rotation=270, labelpad=20)
+    cbar6.set_label(r'Stream Function $\psi$', fontsize=14, rotation=270, labelpad=20)
     ax6.set_aspect('equal', adjustable='box')
     ax6.set_title('left')
 
@@ -549,7 +549,7 @@ def find_all_contours(stream_func_coil, all_coords_verts, Steps, refinement_fact
                         level_segments_2d.append(np.array(intersections))
             
             
-            level_segments_3d = []              # Initialise the 3D segment array. In this array the segment coordinates (2 2D-points) are transformed back to 3D coordinates by adding the offset
+            level_segments_3d = []                      # Initialise the 3D segment array. In this array the segment coordinates (2 2D-points) are transformed back to 3D coordinates by adding the offset
             for seg2d in level_segments_2d:
                 seg3d = np.zeros((2, 3))
                 seg3d[:, coord_map[0]] = seg2d[:, 0]
@@ -612,17 +612,17 @@ def plot_contours(all_contours, stream_func_coil, total_coord, Steps):
 
         const_dim = np.argmin([x_range, y_range, z_range])
 
-        if const_dim == 0:  # yz-plane
+        if const_dim == 0:          # yz-plane
             u_face = y_face
             v_face = z_face
             ax.set_xlabel('y [m]')
             ax.set_ylabel('z [m]')
-        elif const_dim == 1:  # xz-plane
+        elif const_dim == 1:        # xz-plane
             u_face = x_face
             v_face = z_face
             ax.set_xlabel('x [m]')
             ax.set_ylabel('z [m]')
-        else:  # xy-plane
+        else:                       # xy-plane
             u_face = x_face
             v_face = y_face
             ax.set_xlabel('x [m]')
@@ -707,7 +707,7 @@ def smooth_1d_periodic(signal, n_keep):
     signal = np.asarray(signal)                 # np.array holding the coordinates in one direction
     N = len(signal)
 
-    coeffs = scipy.fft.fft(signal)                        # now contains the fft of the coordinate in one direction
+    coeffs = scipy.fft.fft(signal)              # now contains the fft of the coordinate in one direction
 
     filtered = np.zeros_like(coeffs)            # shall hold the truncated fft
 
@@ -715,7 +715,7 @@ def smooth_1d_periodic(signal, n_keep):
     filtered[:n_keep + 1] = coeffs[:n_keep + 1] # copies the DC and lowest positive frequencies
     filtered[-n_keep:] = coeffs[-n_keep:]       # copies the negative-frequency side of the spectrum
                                                 # Note: Even though for a real signal, the sdes are simply mirrored, we copy both sides of the fft for robustness.
-    smoothed = scipy.fft.ifft(filtered).real              # performs inverse fft to retrieve function in "time-space". Note that the function is purely real!
+    smoothed = scipy.fft.ifft(filtered).real    # performs inverse fft to retrieve function in "time-space". Note that the function is purely real!
     
     return smoothed
 
