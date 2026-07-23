@@ -1,5 +1,4 @@
 import numpy as np
-
 import matplotlib.tri as mtri
 import trimesh
 import bfieldtools

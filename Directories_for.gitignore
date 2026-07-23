@@ -1,5 +1,11 @@
+__pycache__/
 B_tot_results/
 Experiments/
 Finale_Karten/
 Desired_map/
 Improved_map/
+.ipynb_checkpoints/
+*.pyc
+.venv/
+venv/
+env/
