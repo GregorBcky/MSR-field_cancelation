@@ -8,7 +8,7 @@ import glob
 mu_0=scipy.constants.mu_0
 pi=scipy.constants.pi
 
-def load_data_from_folder(folder_path_no_current, folder_path_with_current, L_x, L_y, L_z, step_size, shift_x, shift_y, shift_z):
+def load_data_from_folder(folder_path_no_current, folder_path_with_current, shift_x, shift_y, shift_z):
     '''L_x, L_y, L_z: dimensions of the measurement volume in [m]
        step_size: step size of the measurement grid in [m]
        shift_x, shift_y, shift_z: shifts of the coordinate system in [m]'''
@@ -27,20 +27,58 @@ def load_data_from_folder(folder_path_no_current, folder_path_with_current, L_x,
             y = data['y_mm'] * 1e-3 - shift_y
             z = data['z_mm'] * 1e-3 - shift_z
 
-            mean_Bx = data['mean_Bx_pT'] * 1e-12                                # Umrechnen in [T]
-            mean_By = data['mean_By_pT'] * 1e-12
-            mean_Bz = data['mean_Bz_pT'] * 1e-12
-
-            
             each_target_point = np.array([x, y, z]).T                           # (Npoints, 3)
-            each_B_target = np.array([mean_Bx, mean_By, mean_Bz]).T             # (Npoints, 3)
-
             target_point_coord.append(each_target_point)
+
+            if 'mean_Bx_pT' in data and 'mean_By_pT' in data and 'mean_Bz_pT' in data:
+                    
+                mean_Bx = data['mean_Bx_pT'] * 1e-12                            # Umrechnen in [T]
+                mean_By = data['mean_By_pT'] * 1e-12
+                mean_Bz = data['mean_Bz_pT'] * 1e-12
+            
+            else:
+                mean_Bx = np.nan                                                # These values will get interpolated later on!
+                mean_By = np.nan
+                mean_Bz = np.nan
+
+                print(f'Warning: There are empty measurements (in the background data) which do not contain any B-field information except the measurement position at ({each_target_point}).')
+
+            each_B_target = np.array([mean_Bx, mean_By, mean_Bz]).T             # (Npoints, 3)
             B_target_point_no_current.append(each_B_target)
 
     # Stack all files into final (total_Npoints, 3) arrays
     target_point_coord = np.vstack(target_point_coord)                          # (total_Npoints, 3)
     B_target_point_no_current = np.vstack(B_target_point_no_current)            # (total_Npoints, 3)
+
+    # Interpolate data in the missing B-field-values in the background measurement
+    missing_rows = np.any(np.isnan(B_target_point_no_current), axis=1)
+    if np.any(missing_rows):
+        valid_rows = missing_rows == False
+        valid_points = target_point_coord[valid_rows]
+        missing_points = target_point_coord[missing_rows]
+        valid_B = B_target_point_no_current[valid_rows]
+
+        for comp in range(3):
+            interpolated = scipy.interpolate.griddata(
+                valid_points,
+                valid_B[:, comp],
+                missing_points,
+                method = 'linear',
+                fill_value = np.nan
+            )
+
+            if np.any(np.isnan(interpolated)):
+                nearest = scipy.interpolate.griddata(
+                    valid_points,
+                    valid_B[:, comp],
+                    missing_points[np.isnan(interpolated)],
+                    method='nearest'
+                )
+                interpolated[np.isnan(interpolated)] = nearest
+
+            B_target_point_no_current[missing_rows, comp] = interpolated
+
+        print(f'Interpolated {missing_rows.sum()} missing B-field row(s) in with-current target data.')
 
     for filename in os.listdir(folder_path_with_current):                       # iterates through all documents in the points folder
         if filename.endswith(".npz"):                                           # only load the .npz files
@@ -70,7 +108,6 @@ def load_data_from_folder(folder_path_no_current, folder_path_with_current, L_x,
             each_B_target = np.array([mean_Bx, mean_By, mean_Bz]).T             # (Npoints, 3)
             B_target_point_with_current.append(each_B_target)
 
-    
 
     # Stack all files into final (total_Npoints, 3) arrays
     target_point_coordinate_test = np.vstack(target_point_coordinate_test)       # (total_Npoints, 3)
