@@ -78,7 +78,7 @@ def load_data_from_folder(folder_path_no_current, folder_path_with_current, shif
 
             B_target_point_no_current[missing_rows, comp] = interpolated
 
-        print(f'Interpolated {missing_rows.sum()} missing B-field row(s) in with-current target data.')
+        print(f'Interpolated {missing_rows.sum()} missing B-field row(s) in background field data.')
 
     for filename in os.listdir(folder_path_with_current):                       # iterates through all documents in the points folder
         if filename.endswith(".npz"):                                           # only load the .npz files
@@ -103,7 +103,7 @@ def load_data_from_folder(folder_path_no_current, folder_path_with_current, shif
                 mean_By = np.nan
                 mean_Bz = np.nan
 
-                print(f'Warning: There are empty measurements which do not contain any B-field information except the measurement position at ({each_target_point}).')
+                print(f'Warning: There are empty measurements (in the with-current data) which do not contain any B-field information except the measurement position at ({each_target_point}).')
 
             each_B_target = np.array([mean_Bx, mean_By, mean_Bz]).T             # (Npoints, 3)
             B_target_point_with_current.append(each_B_target)
