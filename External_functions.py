@@ -1642,3 +1642,126 @@ def optimize_alpha_vector(B_meas, C_tot, psi_faces):
     error = np.sum(np.abs(residual)**2)
     
     return alpha, error
+
+def compute_contour_lengths(spacing, reconstructed_contours):
+    """Compute the length of each reconstructed contour on the square grid.
+
+    The contour points are assumed to lie on a square grid with a node spacing of
+    ``spacing`` meters. Each segment between consecutive points contributes a
+    length based on the Euclidean distance between the two points, expressed in
+    units of the grid spacing.
+
+    Parameters
+    ----------
+    spacing : float
+        Distance between neighboring grid nodes in meters.
+    reconstructed_contours : list
+        Nested list of contours. Expected structure is
+        ``[faces][contours][points][3]``.
+
+    Returns
+    -------
+    np.ndarray
+        Array of shape ``(n_faces, max_n_contours_per_face)`` containing the
+        contour lengths. Missing entries are filled with ``np.nan``.
+    """
+    if spacing <= 0:
+        raise ValueError("spacing must be positive")
+
+    n_faces = len(reconstructed_contours)
+    max_n_contours = max((len(face_contours) for face_contours in reconstructed_contours), default=0)
+    contour_lengths = np.full((n_faces, max_n_contours), np.nan, dtype=float)
+
+    print(f"\n{'=' * 64}")
+    print("CONTOUR LENGTHS (+ 15 m for connection)")
+    print(f"{'=' * 64}")
+    print(f"{'Face':<8} {'Contour':<8} {'Length [m]':>14}")
+    print(f"{'-' * 64}")
+
+    total_length = 0.0
+    for face_idx, face_contours in enumerate(reconstructed_contours):
+        for contour_idx, contour in enumerate(face_contours):
+            if contour is None or len(contour) < 2:
+                continue
+
+            contour = np.asarray(contour, dtype=float)
+            if contour.ndim != 2 or contour.shape[1] != 3:
+                raise ValueError(f"Contour at face {face_idx}, contour {contour_idx} has an unexpected shape: {contour.shape}")
+
+            length = 0.0
+            n_points = contour.shape[0]
+            if np.allclose(contour[0], contour[-1]):
+                point_indices = range(n_points - 1)
+            else:
+                point_indices = range(n_points)
+
+            for point_idx in point_indices:
+                start_point = contour[point_idx]
+                end_point = contour[(point_idx + 1) % n_points]
+                delta = end_point - start_point
+                segment_length = np.linalg.norm(delta / spacing) * spacing
+                length += segment_length
+
+            contour_lengths[face_idx, contour_idx] = length
+            total_length += length
+            print(f"{face_idx + 1:<8} {contour_idx + 1:<8} {length:>14.6f}")
+
+    additional_length = 15.0  # Add 15 meters for the extra length needed to connect the contours
+    print(f"-        --       {additional_length:>14.6f}")
+    total_length += additional_length  # Add 15 meters for the extra length needed to connect the contours
+    print(f"{'-' * 64}")
+    print(f"{'Total':<8} {'':<8} {total_length:>14.6f}")
+    print(f"{'=' * 64}")
+
+    return contour_lengths
+
+def voltage_drop(I_opt,contour_lengths, current, alpha_opt_global, alpha_opt_faces, resistence_per_meter = 0.257):
+    """Calculate the voltage drop across each contour based on its length and the current flowing through it."""
+
+    contour_lengths = np.asarray(contour_lengths, dtype=float)
+
+    if I_opt == "global":
+        total_length = np.nansum(contour_lengths)
+        alpha = np.nan_to_num(alpha_opt_global, nan=0.0, posinf=0.0, neginf=0.0)
+        voltage_drop = total_length * resistence_per_meter * (current * alpha)
+
+        R_tot = np.empty(1, dtype=float)
+        R_tot[0] = total_length * resistence_per_meter
+
+        print(f'The total resistance across all contours is {R_tot[0]:.2e} Ohm.')
+
+        print(f'The voltage drop across all contours (if all wires carry the same current) is {voltage_drop:.1e} V.')
+        if voltage_drop < 1.5:
+            print(f'Voltage drop is below 1.5 V, which is acceptable for the Magnicon.')
+        else:
+            print(f'Voltage drop is above 1.5 V, which is NOT acceptable for the Magnicon.')
+
+    elif I_opt == "per_face":
+        voltage_drop = np.full(contour_lengths.shape[0], np.nan, dtype=float)
+        R_tot = np.full(contour_lengths.shape[0], np.nan, dtype=float)
+        for face_idx in range(contour_lengths.shape[0]):
+            face_length = np.nansum(contour_lengths[face_idx, :])
+            alpha_val = np.nan_to_num(alpha_opt_faces[face_idx], nan=0.0, posinf=0.0, neginf=0.0)
+            voltage_drop[face_idx] = face_length * resistence_per_meter * (current * alpha_val)
+            R_tot[face_idx] = face_length * resistence_per_meter
+
+        print('Voltage drop per face:')
+        for face_idx in range(contour_lengths.shape[0]):
+            if np.isfinite(voltage_drop[face_idx]):
+                print(f'  Face {face_idx + 1}: {voltage_drop[face_idx]:.1e} V')
+                R_face = R_tot[face_idx]
+                print(f'  Resistance of Face {face_idx + 1}: {R_face:.2e} Ohm\n')
+            else:
+                print(f'  Face {face_idx + 1}: NaN (no valid contour lengths / current)\n')
+
+        valid_mask = np.isfinite(voltage_drop)
+        if np.any(valid_mask) and np.all(voltage_drop[valid_mask] < 1.5):
+            print(f'Voltage drop is below 1.5 V for all valid faces, which is acceptable for the Magnicon.')
+        else:
+            print(f'Voltage drop is above 1.5 V for at least one face, which is NOT acceptable for the Magnicon.')
+
+    else:
+        raise ValueError("Please either put on 'global' or 'per_plane'. There was probably a spelling error in your input!")
+
+
+    return voltage_drop, R_tot
