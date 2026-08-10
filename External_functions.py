@@ -1765,3 +1765,250 @@ def voltage_drop(I_opt,contour_lengths, current, alpha_opt_global, alpha_opt_fac
 
 
     return voltage_drop, R_tot
+
+def plot_spline(ax, x, y, color, ls, label):
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+
+    if len(x) < 2:
+        return
+
+    order = np.argsort(x)
+    x_sorted = x[order]
+    y_sorted = y[order]
+
+    if np.allclose(x_sorted[0], x_sorted[-1]):
+        ax.plot(x_sorted, y_sorted, ls=ls, color=color, label=label)
+        return
+
+    x_dense = np.linspace(x_sorted[0], x_sorted[-1], 400)
+    spline = scipy.interpolate.CubicSpline(x_sorted, y_sorted)
+    ax.plot(x_dense, spline(x_dense), ls=ls, color=color, label=label)
+
+def extract_axis_slice(points, field, axis, tol=1e-8):
+    points = np.asarray(points, dtype=float)
+    field = np.asarray(field, dtype=float)
+
+    if axis == 0:
+        mask = np.isclose(points[:, 1], 0.0, atol=tol) & np.isclose(points[:, 2], 0.0, atol=tol)
+    elif axis == 1:
+        mask = np.isclose(points[:, 0], 0.0, atol=tol) & np.isclose(points[:, 2], 0.0, atol=tol)
+    else:
+        mask = np.isclose(points[:, 0], 0.0, atol=tol) & np.isclose(points[:, 1], 0.0, atol=tol)
+
+    coords = points[mask, axis]
+    vals = field[mask]
+
+    if coords.size == 0:
+        return np.empty((0,)), np.empty((0, field.shape[1]))
+
+    order = np.argsort(coords)
+    return coords[order], vals[order]
+
+def interpolate_line_at_z(points, values, z_target, y_target=0.0, atol=1e-8):
+    points = np.asarray(points, dtype=float)
+    values = np.asarray(values, dtype=float)
+
+    mask_y0 = np.isclose(points[:, 1], y_target, atol=atol)
+    points_y0 = points[mask_y0]
+    values_y0 = values[mask_y0]
+
+    if len(points_y0) == 0:
+        return np.empty((0,)), np.empty((0, values.shape[1]))
+
+    x_unique = np.unique(points_y0[:, 0])
+    xs = []
+    Bs = []
+
+    for x in x_unique:
+        mask_x = np.isclose(points_y0[:, 0], x, atol=atol)
+        z_vals = points_y0[mask_x, 2]
+        B_vals = values_y0[mask_x]
+
+        exact = np.isclose(z_vals, z_target, atol=atol)
+        if np.any(exact):
+            idx = np.where(exact)[0][0]
+            xs.append(x)
+            Bs.append(B_vals[idx])
+            continue
+
+        below_idx = np.where(z_vals < z_target)[0]
+        above_idx = np.where(z_vals > z_target)[0]
+        if below_idx.size == 0 or above_idx.size == 0:
+            continue
+
+        idx_low = below_idx[np.argmax(z_vals[below_idx])]
+        idx_high = above_idx[np.argmin(z_vals[above_idx])]
+
+        z_low = z_vals[idx_low]
+        z_high = z_vals[idx_high]
+        B_low = B_vals[idx_low]
+        B_high = B_vals[idx_high]
+
+        t = (z_target - z_low) / (z_high - z_low)
+        xs.append(x)
+        Bs.append(B_low + t * (B_high - B_low))
+
+    if len(xs) == 0:
+        return np.empty((0,)), np.empty((0, values.shape[1]))
+
+    order = np.argsort(xs)
+    return np.array(xs)[order], np.vstack(Bs)[order]
+
+
+def plane_definition(plane):
+    if plane == 'xy':
+        return 0, 1, 2, (0, 1), r'$x$ [m]', r'$y$ [m]'
+    if plane == 'yz':
+        return 1, 2, 0, (1, 2), r'$y$ [m]', r'$z$ [m]'
+    if plane == 'xz':
+        return 0, 2, 1, (0, 2), r'$x$ [m]', r'$z$ [m]'
+    raise ValueError(f'Unknown plane: {plane}')
+
+
+def sample_plane(points, field, plane_extent, plane, plane_value, tol=1e-6, grid_size=160):
+    i_u, i_v, i_fixed, components, _, _ = plane_definition(plane)
+
+    mask = np.isclose(points[:, i_fixed], plane_value, atol=tol)
+    plane_points = points[mask]
+    plane_field = field[mask]
+
+    if plane_points.shape[0] < 8:
+        return None
+
+    u = plane_points[:, i_u]
+    v = plane_points[:, i_v]
+    bu = plane_field[:, components[0]]
+    bv = plane_field[:, components[1]]
+
+    u_min = max(u.min(), -plane_extent)
+    u_max = min(u.max(), plane_extent)
+    v_min = max(v.min(), -plane_extent)
+    v_max = min(v.max(), plane_extent)
+    uu = np.linspace(u_min, u_max, grid_size)
+    vv = np.linspace(v_min, v_max, grid_size)
+    UU, VV = np.meshgrid(uu, vv)
+
+    points_2d = np.column_stack([u, v])
+    grid_bu = scipy.interpolate.griddata(points_2d, bu, (UU, VV), method='linear', fill_value=0.0)
+    grid_bv = scipy.interpolate.griddata(points_2d, bv, (UU, VV), method='linear', fill_value=0.0)
+
+    return UU, VV, grid_bu, grid_bv
+
+
+def draw_box_and_coil_lines(ax, plane, shield, coil_plane_dist_to_origin_x):
+    ax.plot([-shield, shield, shield, -shield, -shield],
+            [-shield, -shield, shield, shield, -shield],
+            color='red', linewidth=1.2, zorder=20, label='Shield box')
+
+    if plane in ('xy', 'xz'):
+        ax.plot([coil_plane_dist_to_origin_x, coil_plane_dist_to_origin_x], [-0.35, 0.35],
+                color='orange', linewidth=1, linestyle='--', zorder=21, label='Coil plane')
+        ax.plot([-coil_plane_dist_to_origin_x, -coil_plane_dist_to_origin_x], [-0.35, 0.35],
+                color='orange', linewidth=1, linestyle='--', zorder=21)
+
+
+def plot_plane_streamlines(plane, plane_value, plane_name, points_calc, field_calc, field_biot, plane_extent, shield, coil_plane_dist_to_origin_x, name, figsize=(12, 9), dpi=120):
+    sample_calc = sample_plane(points_calc, field_calc, plane_extent, plane, plane_value)
+    sample_biot = sample_plane(points_calc, field_biot, plane_extent, plane, plane_value)
+
+    if sample_calc is None or sample_biot is None:
+        print(f'Not enough points available for {plane_name} at {plane_value:.3f} m.')
+        return
+
+    UU, VV, BU_calc, BV_calc = sample_calc
+    _, _, BU_biot, BV_biot = sample_biot
+    speed_calc = np.hypot(BU_calc, BV_calc)
+
+    _, _, _, _, xlabel, ylabel = plane_definition(plane)
+
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+    strm_calc = ax.streamplot(
+        UU,
+        VV,
+        BU_calc,
+        BV_calc,
+        color=speed_calc,
+        linewidth=1.2,
+        cmap='viridis',
+        density=2.8,
+        arrowsize=0,
+        arrowstyle='-',
+        integration_direction='both',
+        minlength=0.1,
+    )
+    strm_biot = ax.streamplot(
+        UU,
+        VV,
+        BU_biot,
+        BV_biot,
+        color='black',
+        linewidth=1.0,
+        density=2.8,
+        arrowsize=0,
+        arrowstyle='-',
+        integration_direction='both',
+        minlength=0.1,
+    )
+    strm_biot.lines.set_linestyle('--')
+
+    cbar = fig.colorbar(strm_calc.lines, ax=ax, label=r'$|\mathbf{B}_{\text{plane}}|$')
+    cbar.ax.yaxis.set_offset_position('left')
+
+    draw_box_and_coil_lines(ax, plane, shield, coil_plane_dist_to_origin_x)
+    ax.plot([], [], color='black', ls='-', label='Calc. streamlines')
+    ax.plot([], [], color='black', ls='--', label='Biot-Savart streamlines')
+
+    ax.set_xlim(-plane_extent, plane_extent)
+    ax.set_ylim(-plane_extent, plane_extent)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(f'Field streamlines on the {plane_name} for {name}', pad=25)
+    ax.set_aspect('equal', adjustable='box')
+    ax.grid(True, linestyle=':', linewidth=0.5)
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.16), ncol=2, fontsize=8)
+    plt.tight_layout(rect=[0, 0, 1, 0.88])
+    plt.show()
+    return fig, ax
+
+
+def plot_plane_streamlines_measured(plane, plane_value, plane_name, points_exp, field_exp, plane_extent, shield=None, coil_plane_dist_to_origin_x=None, figsize=(12, 9), dpi=120):
+    sample_exp = sample_plane(points_exp, field_exp, plane_extent, plane, plane_value)
+
+    if sample_exp is None:
+        print(f'Not enough points available for measured field on {plane_name} at {plane_value:.3f} m.')
+        return
+
+    UU, VV, BU_exp, BV_exp = sample_exp
+    speed_exp = np.hypot(BU_exp, BV_exp)
+    _, _, _, _, xlabel, ylabel = plane_definition(plane)
+
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+    strm_exp = ax.streamplot(
+        UU,
+        VV,
+        BU_exp,
+        BV_exp,
+        color=speed_exp,
+        linewidth=1.0,
+        cmap='viridis',
+        density=1.2,
+        arrowsize=0,
+        arrowstyle='-',
+        integration_direction='both',
+        minlength=0.1,
+    )
+
+    if shield is not None and coil_plane_dist_to_origin_x is not None:
+        draw_box_and_coil_lines(ax, plane, shield, coil_plane_dist_to_origin_x)
+
+    ax.set_xlim(-plane_extent, plane_extent)
+    ax.set_ylim(-plane_extent, plane_extent)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(f'Measured field streamlines on the {plane_name}', pad=25)
+    ax.set_aspect('equal', adjustable='box')
+    ax.grid(True, linestyle=':', linewidth=0.5)
+    plt.tight_layout()
+    plt.show()
+    return fig, ax
