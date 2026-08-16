@@ -953,7 +953,7 @@ def plot_singular_values(C, normalize=True, log_scale=True):
         plt.yscale("log")
     plt.grid(True, which="major", ls="-", alpha=1)
     plt.grid(True, which="minor", ls="--", alpha=0.5)
-    plt.title("Singular values of total coupling matrix")
+    # plt.title("Singular values of total coupling matrix")
     plt.tight_layout()
     plt.show()
 
