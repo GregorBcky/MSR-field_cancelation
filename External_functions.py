@@ -220,7 +220,7 @@ def plot_stream_function(vertices, stream_function):
     v_min = min(stream_function)
     v_max = max(stream_function)
     c_map = 'RdBu_r'                # red-blue Colormap (symmetric)
-    s=40                            # point size
+    s=10                            # point size
     alpha=0.8                       # transparency of points
 
     fig_3d = plt.figure(figsize=(12, 10))
@@ -266,7 +266,9 @@ def plot_stream_function(vertices, stream_function):
     cbar1 = plt.colorbar(scatter1, shrink=0.6, pad=0.1)
     cbar1.set_label(r'Stream Function $\psi$', fontsize=14, rotation=270, labelpad=20)
     ax1.set_aspect('equal', adjustable='box')
-    ax1.set_title('Top')
+    ax1.set_title('Top (xy-plane)')
+    ax1.set_xlabel(r'$x$ [m]')
+    ax1.set_ylabel(r'$y$ [m]')
 
     ax2 = fig_faces.add_subplot(2, 3, 2)
     scatter2 = ax2.scatter(
@@ -283,7 +285,9 @@ def plot_stream_function(vertices, stream_function):
     cbar2 = plt.colorbar(scatter2, shrink=0.6, pad=0.1)
     cbar2.set_label(r'Stream Function $\psi$', fontsize=14, rotation=270, labelpad=20)
     ax2.set_aspect('equal', adjustable='box')
-    ax2.set_title('Bottom')
+    ax2.set_title('Bottom (xy-plane)')
+    ax2.set_xlabel(r'$x$ [m]')
+    ax2.set_ylabel(r'$y$ [m]')
 
     ax3 = fig_faces.add_subplot(2, 3, 3)
     scatter3 = ax3.scatter(
@@ -300,7 +304,9 @@ def plot_stream_function(vertices, stream_function):
     cbar3 = plt.colorbar(scatter3, shrink=0.6, pad=0.1)
     cbar3.set_label(r'Stream Function $\psi$', fontsize=14, rotation=270, labelpad=20)
     ax3.set_aspect('equal', adjustable='box')
-    ax3.set_title('Back')
+    ax3.set_title('Back (xz-plane)')
+    ax3.set_xlabel(r'$x$ [m]')
+    ax3.set_ylabel(r'$z$ [m]')
 
     ax4 = fig_faces.add_subplot(2, 3, 4)
     scatter4 = ax4.scatter(
@@ -317,7 +323,9 @@ def plot_stream_function(vertices, stream_function):
     cbar4 = plt.colorbar(scatter4, shrink=0.6, pad=0.1)
     cbar4.set_label(r'Stream Function $\psi$', fontsize=14, rotation=270, labelpad=20)
     ax4.set_aspect('equal', adjustable='box')
-    ax4.set_title('Front')
+    ax4.set_title('Front (xz-plane)')
+    ax4.set_xlabel(r'$x$ [m]')
+    ax4.set_ylabel(r'$z$ [m]')
 
 
     ax5 = fig_faces.add_subplot(2, 3, 5)
@@ -335,7 +343,9 @@ def plot_stream_function(vertices, stream_function):
     cbar5 = plt.colorbar(scatter5, shrink=0.6, pad=0.1)
     cbar5.set_label(r'Stream Function $\psi$', fontsize=14, rotation=270, labelpad=20)
     ax5.set_aspect('equal', adjustable='box')
-    ax5.set_title('right')
+    ax5.set_title('right (yz-plane)')
+    ax5.set_xlabel(r'$y$ [m]')
+    ax5.set_ylabel(r'$z$ [m]')
 
     ax6 = fig_faces.add_subplot(2, 3, 6)
     scatter6 = ax6.scatter(
@@ -352,7 +362,9 @@ def plot_stream_function(vertices, stream_function):
     cbar6 = plt.colorbar(scatter6, shrink=0.6, pad=0.1)
     cbar6.set_label(r'Stream Function $\psi$', fontsize=14, rotation=270, labelpad=20)
     ax6.set_aspect('equal', adjustable='box')
-    ax6.set_title('left')
+    ax6.set_title('left (yz-plane)')
+    ax6.set_xlabel(r'$y$ [m]')
+    ax6.set_ylabel(r'$z$ [m]')
 
     plt.tight_layout()
     plt.show()
@@ -1896,9 +1908,9 @@ def sample_plane(points, field, plane_extent, plane, plane_value, tol=1e-6, grid
     return UU, VV, grid_bu, grid_bv
 
 
-def draw_box_and_coil_lines(ax, plane, shield, coil_plane_dist_to_origin_x):
-    ax.plot([-shield, shield, shield, -shield, -shield],
-            [-shield, -shield, shield, shield, -shield],
+def draw_box_and_coil_lines(ax, plane, shield_x, shield_y, coil_plane_dist_to_origin_x):
+    ax.plot([-shield_x, shield_x, shield_x, -shield_x, -shield_x],
+            [-shield_y, -shield_y, shield_y, shield_y, -shield_y],
             color='red', linewidth=1.2, zorder=20, label='Shield box')
 
     if plane in ('xy', 'xz'):
@@ -1908,7 +1920,7 @@ def draw_box_and_coil_lines(ax, plane, shield, coil_plane_dist_to_origin_x):
                 color='orange', linewidth=1, linestyle='--', zorder=21)
 
 
-def plot_plane_streamlines(plane, plane_value, plane_name, points_calc, field_calc, field_biot, plane_extent, shield, coil_plane_dist_to_origin_x, name, figsize=(12, 9), dpi=120):
+def plot_plane_streamlines(plane, plane_value, plane_name, points_calc, field_calc, field_biot, plane_extent, shield_x, shield_y, coil_plane_dist_to_origin_x, name, figsize=(12, 9), dpi=120):
     sample_calc = sample_plane(points_calc, field_calc, plane_extent, plane, plane_value)
     sample_biot = sample_plane(points_calc, field_biot, plane_extent, plane, plane_value)
 
@@ -1955,7 +1967,7 @@ def plot_plane_streamlines(plane, plane_value, plane_name, points_calc, field_ca
     cbar = fig.colorbar(strm_calc.lines, ax=ax, label=r'$|\mathbf{B}_{\text{plane}}|$')
     cbar.ax.yaxis.set_offset_position('left')
 
-    draw_box_and_coil_lines(ax, plane, shield, coil_plane_dist_to_origin_x)
+    draw_box_and_coil_lines(ax, plane, shield_x, shield_y, coil_plane_dist_to_origin_x)
     ax.plot([], [], color='black', ls='-', label='Calc. streamlines')
     ax.plot([], [], color='black', ls='--', label='Biot-Savart streamlines')
 
@@ -1972,18 +1984,41 @@ def plot_plane_streamlines(plane, plane_value, plane_name, points_calc, field_ca
     return fig, ax
 
 
-def plot_plane_streamlines_measured(plane, plane_value, plane_name, points_exp, field_exp, plane_extent, shield=None, coil_plane_dist_to_origin_x=None, figsize=(12, 9), dpi=120):
-    sample_exp = sample_plane(points_exp, field_exp, plane_extent, plane, plane_value)
+def plot_plane_streamlines_measured(
+    plane,
+    plane_value,
+    plane_name,
+    points_exp,
+    field_exp,
+    plane_extent,
+    shield_x=None,
+    shield_y=None,
+    coil_plane_dist_to_origin_x=None,
+    figsize=(12, 9),
+    dpi=120,
+):
+    sample_exp = sample_plane(
+        points_exp,
+        field_exp,
+        plane_extent,
+        plane,
+        plane_value,
+    )
 
     if sample_exp is None:
-        print(f'Not enough points available for measured field on {plane_name} at {plane_value:.3f} m.')
+        print(
+            f"Not enough points available for measured field "
+            f"on {plane_name} at {plane_value:.3f} m."
+        )
         return
 
     UU, VV, BU_exp, BV_exp = sample_exp
     speed_exp = np.hypot(BU_exp, BV_exp)
+
     _, _, _, _, xlabel, ylabel = plane_definition(plane)
 
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+
     strm_exp = ax.streamplot(
         UU,
         VV,
@@ -1991,24 +2026,45 @@ def plot_plane_streamlines_measured(plane, plane_value, plane_name, points_exp, 
         BV_exp,
         color=speed_exp,
         linewidth=1.0,
-        cmap='viridis',
+        cmap="viridis",
         density=1.2,
         arrowsize=0,
-        arrowstyle='-',
-        integration_direction='both',
+        arrowstyle="-",
+        integration_direction="both",
         minlength=0.1,
     )
 
-    if shield is not None and coil_plane_dist_to_origin_x is not None:
-        draw_box_and_coil_lines(ax, plane, shield, coil_plane_dist_to_origin_x)
+    if shield_x is not None and coil_plane_dist_to_origin_x is not None:
+        draw_box_and_coil_lines(
+            ax,
+            plane,
+            shield_x,
+            shield_y,
+            coil_plane_dist_to_origin_x,
+        )
+
+    # Colorbar for the measured field
+    cbar = fig.colorbar(
+        strm_exp.lines,
+        ax=ax,
+        label=r"$|\mathbf{B}_{\text{plane}}|$",
+    )
+    cbar.ax.yaxis.set_offset_position("left")
 
     ax.set_xlim(-plane_extent, plane_extent)
     ax.set_ylim(-plane_extent, plane_extent)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
-    ax.set_title(f'Measured field streamlines on the {plane_name}', pad=25)
-    ax.set_aspect('equal', adjustable='box')
-    ax.grid(True, linestyle=':', linewidth=0.5)
-    plt.tight_layout()
+    ax.set_title(
+        f"Measured field streamlines on the {plane_name}",
+        pad=25,
+    )
+    ax.set_aspect("equal", adjustable="box")
+    ax.grid(True, linestyle=":", linewidth=0.5)
+
+    # Same layout treatment as in the first function
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.16), ncol=2, fontsize=8)
+    plt.tight_layout(rect=[0, 0, 1, 0.88])
     plt.show()
+
     return fig, ax
