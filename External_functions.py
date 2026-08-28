@@ -217,34 +217,37 @@ def plot_Experiment_results_coils(target_point_coord, B_target_point_no_current,
 
 def plot_stream_function(vertices, stream_function):
 
-    v_min = min(stream_function)
-    v_max = max(stream_function)
-    c_map = 'RdBu_r'                # red-blue Colormap (symmetric)
-    s=10                            # point size
-    alpha=0.8                       # transparency of points
+    v_min = np.min(stream_function)
+    v_max = np.max(stream_function)
 
-    fig_3d = plt.figure(figsize=(12, 10))
+    c_map = 'RdBu_r'
+    s = 10
+    alpha = 0.8
+
+    fig_3d = plt.figure(figsize = (12, 12))
     ax_3d = fig_3d.add_subplot(111, projection='3d')
 
     scatter_3d = ax_3d.scatter(
         vertices[:, 0], vertices[:, 1], vertices[:, 2],
-        c=stream_function, cmap='RdBu_r', s=40, alpha=0.8, edgecolors = 'none'
+        c=stream_function, cmap=c_map, s=40, alpha=0.8, edgecolors='none'
     )
 
-    cbar_3d = plt.colorbar(scatter_3d, shrink=0.6, pad=0.1)
-    cbar_3d.set_label(r'Stream Sunction $\psi$', fontsize=14, rotation=270, labelpad=20)
+    cbar_3d = fig_3d.colorbar(scatter_3d, shrink=0.6, pad=0.1)
+    cbar_3d.set_label(r'Stream Function $\psi$', fontsize=14, rotation=270, labelpad=20)
 
-    ax_3d.set_xlabel('X [m]', fontsize=12)
-    ax_3d.set_ylabel('Y [m]', fontsize=12)
-    ax_3d.set_zlabel('Z [m]', fontsize=12)
+    ax_3d.set_xlabel('x [m]', fontsize=12)
+    ax_3d.set_ylabel('y [m]', fontsize=12)
+    ax_3d.set_zlabel('z [m]', fontsize=12)
     ax_3d.set_title('Stream Function on Coil-Surface', fontsize=16, pad=20)
 
-    ax_3d.set_xlim(vertices[:,0].min()*1.05, vertices[:,0].max()*1.05)
-    ax_3d.set_ylim(vertices[:,1].min()*1.05, vertices[:,1].max()*1.05)
-    ax_3d.set_zlim(vertices[:,2].min()*1.05, vertices[:,2].max()*1.05)
+    ax_3d.set_xlim(vertices[:, 0].min() * 1.05, vertices[:, 0].max() * 1.05)
+    ax_3d.set_ylim(vertices[:, 1].min() * 1.05, vertices[:, 1].max() * 1.05)
+    ax_3d.set_zlim(vertices[:, 2].min() * 1.05, vertices[:, 2].max() * 1.05)
 
-    plt.tight_layout()
+
     plt.show()
+    # fig_3d.savefig("Figures_pgf/Streamfunction_3D.pgf", bbox_inches="tight")
+    plt.close(fig_3d)
     
 
     N = int(vertices.shape[0]/6)
@@ -263,7 +266,7 @@ def plot_stream_function(vertices, stream_function):
         alpha = alpha,
         edgecolors = 'none'
     )
-    cbar1 = plt.colorbar(scatter1, shrink=0.6, pad=0.1)
+    cbar1 = fig_faces.colorbar(scatter1, shrink=0.6, pad=0.1)
     cbar1.set_label(r'Stream Function $\psi$', fontsize=14, rotation=270, labelpad=20)
     ax1.set_aspect('equal', adjustable='box')
     ax1.set_title('Top (xy-plane)')
@@ -282,7 +285,7 @@ def plot_stream_function(vertices, stream_function):
         alpha = alpha,
         edgecolors = 'none'
     )
-    cbar2 = plt.colorbar(scatter2, shrink=0.6, pad=0.1)
+    cbar2 = fig_faces.colorbar(scatter2, shrink=0.6, pad=0.1)
     cbar2.set_label(r'Stream Function $\psi$', fontsize=14, rotation=270, labelpad=20)
     ax2.set_aspect('equal', adjustable='box')
     ax2.set_title('Bottom (xy-plane)')
@@ -301,7 +304,7 @@ def plot_stream_function(vertices, stream_function):
         alpha = alpha,
         edgecolors = 'none'
     )
-    cbar3 = plt.colorbar(scatter3, shrink=0.6, pad=0.1)
+    cbar3 = fig_faces.colorbar(scatter3, shrink=0.6, pad=0.1)
     cbar3.set_label(r'Stream Function $\psi$', fontsize=14, rotation=270, labelpad=20)
     ax3.set_aspect('equal', adjustable='box')
     ax3.set_title('Back (xz-plane)')
@@ -320,7 +323,7 @@ def plot_stream_function(vertices, stream_function):
         alpha = alpha,
         edgecolors = 'none'
     )
-    cbar4 = plt.colorbar(scatter4, shrink=0.6, pad=0.1)
+    cbar4 = fig_faces.colorbar(scatter4, shrink=0.6, pad=0.1)
     cbar4.set_label(r'Stream Function $\psi$', fontsize=14, rotation=270, labelpad=20)
     ax4.set_aspect('equal', adjustable='box')
     ax4.set_title('Front (xz-plane)')
@@ -340,7 +343,7 @@ def plot_stream_function(vertices, stream_function):
         alpha = alpha,
         edgecolors = 'none'
     )
-    cbar5 = plt.colorbar(scatter5, shrink=0.6, pad=0.1)
+    cbar5 = fig_faces.colorbar(scatter5, shrink=0.6, pad=0.1)
     cbar5.set_label(r'Stream Function $\psi$', fontsize=14, rotation=270, labelpad=20)
     ax5.set_aspect('equal', adjustable='box')
     ax5.set_title('right (yz-plane)')
@@ -359,14 +362,14 @@ def plot_stream_function(vertices, stream_function):
         alpha = alpha,
         edgecolors = 'none'
     )
-    cbar6 = plt.colorbar(scatter6, shrink=0.6, pad=0.1)
+    cbar6 = fig_faces.colorbar(scatter6, shrink=0.6, pad=0.1)
     cbar6.set_label(r'Stream Function $\psi$', fontsize=14, rotation=270, labelpad=20)
     ax6.set_aspect('equal', adjustable='box')
     ax6.set_title('left (yz-plane)')
     ax6.set_xlabel(r'$y$ [m]')
     ax6.set_ylabel(r'$z$ [m]')
 
-    plt.tight_layout()
+    fig_faces.tight_layout()
     plt.show()
 
 def calculation_target_points(n, coil_plane_dist_to_origin_x, coil_plane_dist_to_origin_y, coil_plane_dist_to_origin_z, safety_distance):
@@ -957,16 +960,16 @@ def plot_singular_values(C, normalize=True, log_scale=True):
 
     idx = np.arange(len(s_plot))
 
-    plt.figure(figsize=(8, 5))
-    plt.plot(idx, s_plot, lw=2)
-    plt.xlabel("Singular value index")
-    plt.ylabel(ylabel)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(idx, s_plot, lw=2)
+    ax.set_xlabel("Singular value index")
+    ax.set_ylabel(ylabel)
     if log_scale:
-        plt.yscale("log")
-    plt.grid(True, which="major", ls="-", alpha=1)
-    plt.grid(True, which="minor", ls="--", alpha=0.5)
-    # plt.title("Singular values of total coupling matrix")
-    plt.tight_layout()
+        ax.set_yscale("log")
+    ax.grid(True, which="major", ls="-", alpha=1)
+    ax.grid(True, which="minor", ls="--", alpha=0.5)
+    # ax.set_title("Singular values of total coupling matrix")
+    fig.tight_layout()
     plt.show()
 
     return
@@ -2067,4 +2070,22 @@ def plot_plane_streamlines_measured(
     plt.tight_layout(rect=[0, 0, 1, 0.88])
     plt.show()
 
+    return fig, ax
+
+# ---------- Hilfsfunktion für pgf-Plots ----------
+def figure(fraction):
+    """
+    Erstellt eine Figure mit 4:3-Seitenverhältnis.
+
+    fraction = 1.0  -> gesamte Textbreite
+    fraction = 0.48 -> zwei Grafiken nebeneinander
+    """
+
+    textwidth_pt = 455.24411      # "\the\textwidth" aus LaTeX (schreib das mal irgendwo in deinen text dann bekommst du an der stelle deine schriftbreite ausgegeben)
+    inches_per_pt = 1 / 72.27
+
+    width = textwidth_pt * inches_per_pt * fraction
+    height = width * 3 / 4
+
+    fig, ax = plt.subplots(figsize=(width, height))
     return fig, ax
