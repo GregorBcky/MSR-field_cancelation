@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
 import scipy
@@ -2072,20 +2073,24 @@ def plot_plane_streamlines_measured(
 
     return fig, ax
 
-# ---------- Hilfsfunktion für pgf-Plots ----------
-def figure(fraction):
+# ---------- Helper function for pgf-Plots ----------
+def figure(per_line = 1, per_column = 1, fraction=1.0, dim_3D=False):
     """
     Erstellt eine Figure mit 4:3-Seitenverhältnis.
 
     fraction = 1.0  -> gesamte Textbreite
     fraction = 0.48 -> zwei Grafiken nebeneinander
     """
-
-    textwidth_pt = 455.24411      # "\the\textwidth" aus LaTeX (schreib das mal irgendwo in deinen text dann bekommst du an der stelle deine schriftbreite ausgegeben)
+    textwidth_pt = 455.24411      # \the\textwidth aus LaTeX (schreib das mal irgendwo in deinen text dann bekommst du an der stelle deine schriftbreite ausgegeben)
     inches_per_pt = 1 / 72.27
 
     width = textwidth_pt * inches_per_pt * fraction
     height = width * 3 / 4
 
-    fig, ax = plt.subplots(figsize=(width, height))
+    if dim_3D:
+        fig = plt.figure(figsize=(width, height))
+        ax = fig.add_subplot(111, projection='3d')
+    else:
+        fig, ax = plt.subplots(per_line, per_column, figsize=(width, height), sharey=False, constrained_layout=True)
+    
     return fig, ax
